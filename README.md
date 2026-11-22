@@ -38,6 +38,21 @@ npm run tauri dev      # 开发调试
 npm run tauri build    # 打包（Windows 输出 NSIS 安装包）
 ```
 
+## 发布新版本
+
+推送 `v*.*.*` 格式的 tag 时，GitHub Actions 会构建 Windows 安装包并发布到 Releases。
+工作流只在推送 tag 时运行，没有定时任务，普通 push 和 PR 都不会触发。
+
+```bash
+npm run version:set -- 0.1.1        # 同步修改 package.json / tauri.conf.json / Cargo.toml 等文件的版本号
+git commit -am "release: v0.1.1"
+git tag v0.1.1
+git push && git push origin v0.1.1  # 推送 tag 后开始自动构建
+```
+
+如果 tag 和文件里的版本号不一致，工作流会在第一步报错并停止，不会继续构建。
+也可以不用 Actions，在本地运行 `npm run tauri build` 后用 `gh release create` 手动上传安装包。
+
 ## 设计规范（Soft UI）
 
 | 项 | 值 |
