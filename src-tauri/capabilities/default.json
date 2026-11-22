@@ -15,7 +15,6 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-focus",
     "dialog:allow-open",
-    "opener:default",
-    "window-state:default"
+    "opener:default"
   ]
 }

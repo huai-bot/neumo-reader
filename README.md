@@ -15,6 +15,16 @@
 - **文件变化自动刷新**、拖拽打开、多文件标签、单实例（再次双击文件会在已打开的窗口中打开）、窗口大小位置记忆。
 - 文档内相对链接（如 `[下一章](./chapter-2.md)`）会直接在阅读器中打开。
 
+## 便携版
+
+在软件所在文件夹放一个 `portable.flag` 文件即为便携模式：设置、最近文件、阅读位置、窗口大小位置以及 WebView2 缓存
+都保存在同目录的 `data` 文件夹，不写入用户目录，可以连同文件夹一起拷走。
+Releases 中的 `*_x64-portable.zip` 已经带好了这个文件，解压即用。
+
+- 软件目录不可写时（如 `C:\Program Files`）会自动改用用户目录，并在启动时提示。
+- 设置 → 数据 中可以看到当前模式和数据目录。
+- 本地生成便携版：`npm run tauri build` 后运行 `npm run pack:portable`。
+
 ## 快捷键
 
 | 快捷键 | 作用 |
@@ -40,7 +50,7 @@ npm run tauri build    # 打包（Windows 输出 NSIS 安装包）
 
 ## 发布新版本
 
-推送 `v*.*.*` 格式的 tag 时，GitHub Actions 会构建 Windows 安装包并发布到 Releases。
+推送 `v*.*.*` 格式的 tag 时，GitHub Actions 会构建 Windows 安装版和便携版并发布到 Releases。
 工作流只在推送 tag 时运行，没有定时任务，普通 push 和 PR 都不会触发。
 
 ```bash

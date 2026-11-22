@@ -1,15 +1,69 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     fs,
     io::ErrorKind,
     path::{Path, PathBuf},
     sync::Mutex,
-    time::UNIX_EPOCH,
+    time::{Duration, Instant, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{
+    AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, State, WebviewWindowBuilder,
+    Window, WindowEvent,
+};
 
 const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 const STATE_FILE: &str = "state.json";
+const WINDOW_FILE: &str = "window.json";
+/// 软件目录下存在其中任一文件即启用便携模式
+const PORTABLE_MARKERS: [&str; 2] = ["portable.flag", "portable"];
+const PORTABLE_DATA_DIR: &str = "data";
+
+/* ---------------- 数据目录 ---------------- */
+
+struct AppPaths {
+    data_dir: PathBuf,
+    portable: bool,
+    /// 有便携标记，但软件目录不可写，已回退到用户目录
+    portable_failed: bool,
+}
+
+fn exe_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+}
+
+fn writable(dir: &Path) -> bool {
+    if fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let probe = dir.join(".write-test");
+    match fs::write(&probe, b"ok") {
+        Ok(()) => {
+            let _ = fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// 返回 (便携数据目录, 便携模式是否因不可写而失败)
+fn detect_portable() -> (Option<PathBuf>, bool) {
+    let Some(dir) = exe_dir() else {
+        return (None, false);
+    };
+    if !PORTABLE_MARKERS.iter().any(|m| dir.join(m).is_file()) {
+        return (None, false);
+    }
+    let data = dir.join(PORTABLE_DATA_DIR);
+    if writable(&data) {
+        (Some(normalize(&data)), false)
+    } else {
+        (None, true)
+    }
+}
+
+/* ---------------- 文件读取 ---------------- */
 
 /// 通过文件关联 / 命令行启动时传入的文件，前端启动后取走一次。
 struct StartupFile(Mutex<Option<String>>);
@@ -123,16 +177,20 @@ fn file_stat(path: String) -> FileStat {
     }
 }
 
-fn state_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    Ok(dir.join(STATE_FILE))
+/* ---------------- 应用状态 ---------------- */
+
+fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, data)?;
+    fs::rename(&tmp, path)
 }
 
 #[tauri::command]
-fn load_state(app: AppHandle) -> Result<Option<String>, String> {
-    let path = state_path(&app)?;
-    match fs::read_to_string(&path) {
+fn load_state(paths: State<'_, AppPaths>) -> Result<Option<String>, String> {
+    match fs::read_to_string(paths.data_dir.join(STATE_FILE)) {
         Ok(s) => Ok(Some(s)),
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.to_string()),
@@ -140,18 +198,179 @@ fn load_state(app: AppHandle) -> Result<Option<String>, String> {
 }
 
 #[tauri::command]
-fn save_state(app: AppHandle, state: String) -> Result<(), String> {
+fn save_state(paths: State<'_, AppPaths>, state: String) -> Result<(), String> {
     serde_json::from_str::<serde_json::Value>(&state).map_err(|e| e.to_string())?;
-    let path = state_path(&app)?;
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, state).map_err(|e| e.to_string())?;
-    fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    write_atomic(&paths.data_dir.join(STATE_FILE), state.as_bytes()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn take_startup_file(state: State<'_, StartupFile>) -> Option<String> {
     state.0.lock().ok().and_then(|mut f| f.take())
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppInfo {
+    portable: bool,
+    portable_failed: bool,
+    data_dir: String,
+}
+
+#[tauri::command]
+fn app_info(paths: State<'_, AppPaths>) -> AppInfo {
+    AppInfo {
+        portable: paths.portable,
+        portable_failed: paths.portable_failed,
+        data_dir: paths.data_dir.to_string_lossy().into_owned(),
+    }
+}
+
+#[tauri::command]
+fn open_data_dir(paths: State<'_, AppPaths>) -> Result<(), String> {
+    let dir = &paths.data_dir;
+    fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "windows")]
+    let program = "explorer";
+    #[cfg(target_os = "macos")]
+    let program = "open";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let program = "xdg-open";
+    std::process::Command::new(program)
+        .arg(dir)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/* ---------------- 窗口大小与位置 ---------------- */
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+struct WinBounds {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    maximized: bool,
+}
+
+/// 窗口跟踪：committed 为最近一次“稳定”的普通状态位置大小。
+/// 最大化时系统会先发一次带最大化尺寸的移动事件，再更新最大化标记，
+/// 因此新的位置要稳定 300ms 以上才会提交，避免把最大化尺寸当成普通尺寸。
+#[derive(Default)]
+struct Track {
+    committed: Option<WinBounds>,
+    pending: Option<(WinBounds, Instant)>,
+    maximized: bool,
+}
+
+struct WinState(Mutex<Track>);
+
+const SETTLE: Duration = Duration::from_millis(300);
+
+/// 找到包含该位置的显示器：标题栏左上角 120×40 的区域需要落在显示器内，避免窗口“消失”在屏幕外
+fn monitor_for(monitors: &[Monitor], b: &WinBounds) -> Option<Monitor> {
+    monitors
+        .iter()
+        .find(|m| {
+            let p = m.position();
+            let s = m.size();
+            let (mr, mb) = (p.x + s.width as i32, p.y + s.height as i32);
+            b.x + 120 > p.x && b.x < mr - 40 && b.y >= p.y - 8 && b.y + 40 < mb
+        })
+        .cloned()
+}
+
+fn load_bounds(data_dir: &Path) -> Option<WinBounds> {
+    fs::read(data_dir.join(WINDOW_FILE))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<WinBounds>(&bytes).ok())
+        .filter(|b| b.width >= 400 && b.height >= 300)
+}
+
+fn bounds_of(pos: Option<PhysicalPosition<i32>>, size: Option<PhysicalSize<u32>>) -> Option<WinBounds> {
+    match (pos, size) {
+        (Some(p), Some(s)) => Some(WinBounds {
+            x: p.x,
+            y: p.y,
+            width: s.width,
+            height: s.height,
+            maximized: false,
+        }),
+        _ => None,
+    }
+}
+
+fn record_bounds(
+    state: &WinState,
+    maximized: bool,
+    minimized: bool,
+    pos: Option<PhysicalPosition<i32>>,
+    size: Option<PhysicalSize<u32>>,
+) {
+    let Ok(mut t) = state.0.lock() else {
+        return;
+    };
+    if minimized {
+        return;
+    }
+    // 之前的候选值如果已经稳定足够久，先提交
+    if let Some((b, at)) = t.pending.take() {
+        if at.elapsed() >= SETTLE {
+            t.committed = Some(b);
+        }
+    }
+    t.maximized = maximized;
+    if maximized {
+        return;
+    }
+    if let Some(b) = bounds_of(pos, size) {
+        t.pending = Some((b, Instant::now()));
+    }
+}
+
+fn track_window(window: &Window) {
+    record_bounds(
+        &window.state::<WinState>(),
+        window.is_maximized().unwrap_or(false),
+        window.is_minimized().unwrap_or(false),
+        window.outer_position().ok(),
+        window.inner_size().ok(),
+    );
+}
+
+fn save_window(window: &Window) {
+    let maximized = window.is_maximized().unwrap_or(false);
+    let minimized = window.is_minimized().unwrap_or(false);
+    let state = window.state::<WinState>();
+    let bounds = {
+        let Ok(mut t) = state.0.lock() else {
+            return;
+        };
+        if !maximized && !minimized {
+            // 普通状态：直接取当前值
+            bounds_of(window.outer_position().ok(), window.inner_size().ok())
+        } else {
+            if let Some((b, at)) = t.pending.take() {
+                if at.elapsed() >= SETTLE {
+                    t.committed = Some(b);
+                }
+            }
+            t.committed.map(|mut b| {
+                b.maximized = if minimized { t.maximized } else { true };
+                b
+            })
+        }
+    };
+    let Some(b) = bounds else {
+        return;
+    };
+    let dir = window.state::<AppPaths>().data_dir.clone();
+    if let Ok(bytes) = serde_json::to_vec_pretty(&b) {
+        let _ = write_atomic(&dir.join(WINDOW_FILE), &bytes);
+    }
+}
+
+/* ---------------- 启动 ---------------- */
 
 /// 从命令行参数中取出第一个存在的文件路径（相对路径基于 cwd 解析）
 fn extract_file_arg<I, S>(args: I, cwd: &Path) -> Option<String>
@@ -183,6 +402,7 @@ fn focus_main(app: &AppHandle) {
 pub fn run() {
     let cwd = std::env::current_dir().unwrap_or_default();
     let startup = extract_file_arg(std::env::args(), &cwd);
+    let (portable_dir, portable_failed) = detect_portable();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
@@ -191,17 +411,74 @@ pub fn run() {
             }
             focus_main(app);
         }))
-        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(StartupFile(Mutex::new(startup)))
+        .manage(WinState(Mutex::new(Track::default())))
+        .setup(move |app| {
+            let data_dir = match &portable_dir {
+                Some(dir) => dir.clone(),
+                None => app.path().app_config_dir()?,
+            };
+            fs::create_dir_all(&data_dir)?;
+            app.manage(AppPaths {
+                data_dir: data_dir.clone(),
+                portable: portable_dir.is_some(),
+                portable_failed,
+            });
+
+            let config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|w| w.label == "main")
+                .cloned()
+                .ok_or("tauri.conf.json 缺少 main 窗口配置")?;
+            let mut builder = WebviewWindowBuilder::from_config(app.handle(), &config)?.visible(false);
+            if let Some(dir) = &portable_dir {
+                // 便携模式下 WebView2 的缓存也放在软件目录
+                builder = builder.data_directory(dir.join("webview"));
+            }
+            // 在创建窗口时就给出上次的位置和大小（逻辑像素），避免创建后再移动被改回
+            let saved = load_bounds(&data_dir);
+            let monitors = app.available_monitors().unwrap_or_default();
+            match saved.and_then(|b| monitor_for(&monitors, &b).map(|m| (b, m))) {
+                Some((b, m)) => {
+                    let sf = m.scale_factor();
+                    builder = builder
+                        .inner_size(b.width as f64 / sf, b.height as f64 / sf)
+                        .position(b.x as f64 / sf, b.y as f64 / sf);
+                }
+                None => builder = builder.center(),
+            }
+            let window = builder.build()?;
+            let track = window.state::<WinState>();
+            if let Ok(mut t) = track.0.lock() {
+                t.committed = bounds_of(window.outer_position().ok(), window.inner_size().ok());
+                t.maximized = saved.is_some_and(|b| b.maximized);
+            }
+            if saved.is_some_and(|b| b.maximized) {
+                let _ = window.maximize();
+            }
+            window.show()?;
+            let _ = window.set_focus();
+            Ok(())
+        })
+        .on_window_event(|window, event| match event {
+            WindowEvent::Moved(_) | WindowEvent::Resized(_) => track_window(window),
+            WindowEvent::CloseRequested { .. } => save_window(window),
+            _ => {}
+        })
         .invoke_handler(tauri::generate_handler![
             read_text_file,
             file_stat,
             load_state,
             save_state,
-            take_startup_file
+            take_startup_file,
+            app_info,
+            open_data_dir
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Floral Reader");
+        .expect("error while running the reader");
 }

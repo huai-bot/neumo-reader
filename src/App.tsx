@@ -12,7 +12,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Toasts } from "./components/Toasts";
 import { NeuButton, Lamp } from "./components/neu";
 import { IconOpen } from "./components/Icons";
-import { fileStat, loadState, readTextFile, saveState, takeStartupFile } from "./lib/api";
+import { appInfo, fileStat, loadState, readTextFile, saveState, takeStartupFile } from "./lib/api";
 import type { TextFile } from "./lib/api";
 import { basename, dirname, extOf, pathKey, resolvePath } from "./lib/paths";
 import { docKind, extLabel, MARKDOWN_EXT, TEXT_EXT } from "./lib/fileTypes";
@@ -283,6 +283,12 @@ export default function App() {
       live.current.recent = st.recent;
       setSettings(st.settings);
       setRecent(st.recent);
+
+      void appInfo()
+        .then((info) => {
+          if (info.portableFailed) pushToast("软件目录不可写，便携模式未生效，数据暂存到用户目录", "warn");
+        })
+        .catch(() => undefined);
 
       const startup = await takeStartupFile().catch(() => null);
       if (startup) {

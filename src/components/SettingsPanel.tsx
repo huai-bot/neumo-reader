@@ -3,8 +3,10 @@ import type { ReactNode } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { ContentWidth, Settings } from "../lib/state";
+import { appInfo, openDataDir } from "../lib/api";
+import type { AppInfo } from "../lib/api";
 import { DEFAULT_SETTINGS, FONT_MAX, FONT_MIN } from "../lib/state";
-import { Knob, NeuButton, Segmented, Toggle } from "./neu";
+import { Knob, Lamp, NeuButton, Segmented, Toggle } from "./neu";
 import { IconClose } from "./Icons";
 
 function Row({ title, desc, children }: { title: string; desc?: string; children: ReactNode }) {
@@ -29,8 +31,10 @@ export function SettingsPanel({
   onClose: () => void;
 }) {
   const [version, setVersion] = useState("");
+  const [info, setInfo] = useState<AppInfo | null>(null);
   useEffect(() => {
     void getVersion().then(setVersion).catch(() => setVersion(""));
+    void appInfo().then(setInfo).catch(() => setInfo(null));
   }, []);
 
   return (
@@ -87,6 +91,33 @@ export function SettingsPanel({
         <Row title="文件变化时自动刷新" desc="其他程序修改了正在阅读的文件时自动重新载入，并保持阅读位置。">
           <Toggle label="自动刷新" checked={settings.autoReload} onChange={(v) => onChange({ autoReload: v })} />
         </Row>
+
+        <h3 className="set-group">数据</h3>
+        <div className="set-row">
+          <div className="set-label">
+            <span className="set-title set-title-lamp">
+              <Lamp state={info?.portableFailed ? "warn" : info?.portable ? "on" : "off"} />
+              {info?.portable ? "便携模式" : "安装模式"}
+            </span>
+            <span className="set-desc">
+              {info?.portable
+                ? "设置、最近文件、阅读位置和窗口状态都保存在软件目录的 data 文件夹，可以连同软件一起拷走。"
+                : info?.portableFailed
+                  ? "软件目录有 portable.flag，但该目录不可写，数据暂存到用户目录。请把软件放到可写的位置。"
+                  : "数据保存在用户目录。在软件所在文件夹放一个 portable.flag 文件，重启后即切换为便携模式。"}
+            </span>
+            {info && (
+              <span className="set-path num" title={info.dataDir}>
+                {info.dataDir}
+              </span>
+            )}
+          </div>
+          <div className="set-ctl">
+            <NeuButton size="sm" shape="wide" onClick={() => void openDataDir()}>
+              打开文件夹
+            </NeuButton>
+          </div>
+        </div>
 
         <footer className="set-foot">
           <span>
