@@ -1,0 +1,32 @@
+[package]
+name = "floral-reader"
+version = "0.1.0"
+description = "花笺阅读 - a soft UI Markdown & text reader"
+authors = ["MA SU"]
+license = "MIT"
+edition = "2021"
+
+[lib]
+name = "floral_reader_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+encoding_rs = "0.8"
+dunce = "1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
