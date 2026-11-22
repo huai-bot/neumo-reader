@@ -9,3 +9,7 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 *.log
+
+# ±¾µØ½ØÍ¼
+/*.png
+!/app-icon.png
