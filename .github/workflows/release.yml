@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   windows:
-    if: github.repository == 'huai-bot/floral-reader'
+    if: github.repository == 'huai-bot/neumo-reader'
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
@@ -69,9 +69,9 @@ jobs:
           $ver = $tag.TrimStart('v')
           $src = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
           if (-not $src) { Write-Error "没有找到安装包"; exit 1 }
-          $setup = "FloralReader_${ver}_x64-setup.exe"
+          $setup = "NeumoReader_${ver}_x64-setup.exe"
           Copy-Item $src.FullName $setup
-          $portable = "src-tauri/target/release/portable/FloralReader_${ver}_x64-portable.zip"
+          $portable = "src-tauri/target/release/portable/NeumoReader_${ver}_x64-portable.zip"
           if (-not (Test-Path $portable)) { Write-Error "没有找到便携版"; exit 1 }
           Copy-Item $portable .
           $portable = Split-Path $portable -Leaf

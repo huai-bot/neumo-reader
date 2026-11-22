@@ -24,7 +24,7 @@ edit("package.json", firstVersion);
 edit("src-tauri/tauri.conf.json", firstVersion);
 edit("src-tauri/Cargo.toml", (s) => s.replace(/^(version\s*=\s*")[^"]+(")/m, `$1${version}$2`));
 edit("src-tauri/Cargo.lock", (s) =>
-  s.replace(/(name = "floral-reader"\r?\nversion = ")[^"]+(")/, `$1${version}$2`),
+  s.replace(/(name = "neumo-reader"\r?\nversion = ")[^"]+(")/, `$1${version}$2`),
 );
 edit("package-lock.json", (s) => {
   const lock = JSON.parse(s);

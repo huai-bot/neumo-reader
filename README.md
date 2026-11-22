@@ -1,4 +1,4 @@
-# 拟物阅读
+# 拟物阅读 · Neumo Reader
 
 一个专注阅读的轻量桌面 Markdown / 纯文本阅读器，采用暖米白新拟物（Soft UI）界面。
 基于 Tauri 2 + React 构建。

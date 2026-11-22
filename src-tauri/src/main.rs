@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    floral_reader_lib::run()
+    neumo_reader_lib::run()
 }

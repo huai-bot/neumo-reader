@@ -1,6 +1,6 @@
 # 致谢与来源说明
 
-拟物阅读是一个独立项目，最初参考并改写自
+拟物阅读（Neumo Reader）是一个独立项目，最初参考并改写自
 [花笺 Floral Notepaper](https://github.com/Achilng/floral-notepaper)（MIT License，© 2026 Achilng）。
 感谢原作者的开源工作。
 

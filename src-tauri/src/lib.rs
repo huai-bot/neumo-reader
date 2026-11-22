@@ -372,6 +372,27 @@ fn save_window(window: &Window) {
 
 /* ---------------- 启动 ---------------- */
 
+/// 0.1.0 使用旧标识，首次运行新版本时把设置与阅读记录迁移过来（不删除旧文件）
+const LEGACY_IDENTIFIER: &str = "com.masu.floral-reader";
+
+fn migrate_legacy(dir: &Path) {
+    if dir.join(STATE_FILE).exists() {
+        return;
+    }
+    let Some(old) = dir.parent().map(|p| p.join(LEGACY_IDENTIFIER)) else {
+        return;
+    };
+    let src = old.join(STATE_FILE);
+    if !src.is_file() || fs::create_dir_all(dir).is_err() {
+        return;
+    }
+    let _ = fs::copy(&src, dir.join(STATE_FILE));
+    let win = old.join(WINDOW_FILE);
+    if win.is_file() {
+        let _ = fs::copy(&win, dir.join(WINDOW_FILE));
+    }
+}
+
 /// 从命令行参数中取出第一个存在的文件路径（相对路径基于 cwd 解析）
 fn extract_file_arg<I, S>(args: I, cwd: &Path) -> Option<String>
 where
@@ -418,7 +439,11 @@ pub fn run() {
         .setup(move |app| {
             let data_dir = match &portable_dir {
                 Some(dir) => dir.clone(),
-                None => app.path().app_config_dir()?,
+                None => {
+                    let dir = app.path().app_config_dir()?;
+                    migrate_legacy(&dir);
+                    dir
+                }
             };
             fs::create_dir_all(&data_dir)?;
             app.manage(AppPaths {

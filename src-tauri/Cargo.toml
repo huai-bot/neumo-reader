@@ -1,13 +1,13 @@
 [package]
-name = "floral-reader"
-version = "0.1.0"
+name = "neumo-reader"
+version = "0.1.1"
 description = "拟物阅读 - a soft UI Markdown & text reader"
 authors = ["MA SU"]
 license = "MIT"
 edition = "2021"
 
 [lib]
-name = "floral_reader_lib"
+name = "neumo_reader_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
