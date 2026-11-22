@@ -1,4 +1,4 @@
-# 花笺阅读 · Floral Reader
+# 拟物阅读
 
 一个专注阅读的轻量桌面 Markdown / 纯文本阅读器，采用暖米白新拟物（Soft UI）界面。
 基于 Tauri 2 + React 构建。
@@ -70,4 +70,8 @@ git push && git push origin v0.1.1  # 推送 tag 后开始自动构建
 
 ## 许可
 
-MIT，详见 [LICENSE](./LICENSE) 与 [NOTICE.md](./NOTICE.md)。
+MIT，详见 [LICENSE](./LICENSE)。
+
+## 致谢
+
+本项目最初参考并改写自 [花笺 Floral Notepaper](https://github.com/Achilng/floral-notepaper)（MIT License，© Achilng），感谢原作者的开源工作。拟物阅读是独立项目，不跟随上游更新，详见 [NOTICE.md](./NOTICE.md)。

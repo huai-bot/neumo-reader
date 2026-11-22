@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "花笺阅读",
+  "productName": "拟物阅读",
   "mainBinaryName": "floral-reader",
   "version": "0.1.0",
   "identifier": "com.masu.floral-reader",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "花笺阅读",
+        "title": "拟物阅读",
         "width": 1200,
         "height": 800,
         "minWidth": 760,

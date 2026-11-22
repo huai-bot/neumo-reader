@@ -448,7 +448,7 @@ export default function App() {
         sidebarOpen={!settings.sidebarCollapsed}
         onToggleSidebar={toggleSidebar}
         onOpen={() => void pickFiles()}
-        title={activeDoc ? activeDoc.name : "花笺阅读"}
+        title={activeDoc ? activeDoc.name : "拟物阅读"}
         subtitle={activeDoc ? dirname(activeDoc.path) : ""}
         fontSize={settings.fontSize}
         onFontStep={fontStep}

@@ -90,10 +90,10 @@ export function SettingsPanel({
 
         <footer className="set-foot">
           <span>
-            花笺阅读 <span className="num">{version && `v${version}`}</span> · MIT
+            拟物阅读 <span className="num">{version && `v${version}`}</span> · MIT
           </span>
           <button type="button" className="sb-link" onClick={() => void openUrl("https://github.com/Achilng/floral-notepaper")}>
-            源自 Floral Notepaper
+            致谢：花笺 Floral Notepaper
           </button>
         </footer>
       </section>

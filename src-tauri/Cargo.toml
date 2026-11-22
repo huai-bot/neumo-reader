@@ -1,7 +1,7 @@
 [package]
 name = "floral-reader"
 version = "0.1.0"
-description = "花笺阅读 - a soft UI Markdown & text reader"
+description = "拟物阅读 - a soft UI Markdown & text reader"
 authors = ["MA SU"]
 license = "MIT"
 edition = "2021"
