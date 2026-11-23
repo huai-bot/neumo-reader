@@ -42,18 +42,20 @@ enum Action {
     PageDown,
     PrevSection,
     NextSection,
+    ToggleView,
 }
 
 /// (动作, 配置里的名字, 中文名, 默认热键)
-const ACTIONS: [(Action, &str, &str, &str); 8] = [
+const ACTIONS: [(Action, &str, &str, &str); 9] = [
     (Action::Peek, "peek", "偷看 / 固定", "Alt+Backquote"),
     (Action::Adjust, "adjust", "调整模式", "Alt+Shift+Backquote"),
     (Action::ScrollUp, "scrollUp", "向上滚动", "Alt+ArrowUp"),
     (Action::ScrollDown, "scrollDown", "向下滚动", "Alt+ArrowDown"),
     (Action::PageUp, "pageUp", "上一页", "Alt+PageUp"),
     (Action::PageDown, "pageDown", "下一页", "Alt+PageDown"),
-    (Action::PrevSection, "prevSection", "上一节", "Alt+BracketLeft"),
-    (Action::NextSection, "nextSection", "下一节", "Alt+BracketRight"),
+    (Action::PrevSection, "prevSection", "上一节 / 上一步", "Alt+BracketLeft"),
+    (Action::NextSection, "nextSection", "下一节 / 下一步", "Alt+BracketRight"),
+    (Action::ToggleView, "toggleView", "切换全文 / 卡片", "Alt+Backslash"),
 ];
 
 impl Action {
@@ -66,6 +68,7 @@ impl Action {
             Action::PageDown => Some(("page", 1)),
             Action::PrevSection => Some(("heading", -1)),
             Action::NextSection => Some(("heading", 1)),
+            Action::ToggleView => Some(("view", 0)),
             Action::Peek | Action::Adjust => None,
         }
     }

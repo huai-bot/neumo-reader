@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { CloseAction, ContentWidth, Settings } from "../lib/state";
+import type { PeekView } from "../peek/protocol";
+import type { CardSplit } from "../peek/cards";
 import { appInfo, openDataDir, overlayToggle } from "../lib/api";
 import type { AppInfo } from "../lib/api";
 import { DEFAULT_SETTINGS, FONT_MAX, FONT_MIN } from "../lib/state";
@@ -159,6 +161,42 @@ export function SettingsPanel({
               { value: "18", label: "18" },
               { value: "20", label: "20" },
             ]}
+          />
+        </Row>
+
+        <Row
+          title="显示方式"
+          desc={`步骤卡片：一次只显示一节或一步，适合边玩边看；全文：和主窗口一样连续滚动。悬浮层显示时也可以按 ${formatHotkey(settings.hotkeys.toggleView) || "热键"} 切换。`}
+        >
+          <Segmented<PeekView>
+            label="显示方式"
+            value={settings.overlayView}
+            onChange={(v) => onChange({ overlayView: v })}
+            options={[
+              { value: "card", label: "步骤卡片" },
+              { value: "scroll", label: "全文" },
+            ]}
+          />
+        </Row>
+        <Row title="卡片拆分" desc="按步骤：有序列表和任务列表的每一项单独成卡，列表前的说明放在第一步；按章节：每个标题一张卡。">
+          <Segmented<CardSplit>
+            label="卡片拆分"
+            value={settings.overlayCardSplit}
+            onChange={(v) => onChange({ overlayCardSplit: v })}
+            options={[
+              { value: "step", label: "按步骤" },
+              { value: "section", label: "按章节" },
+            ]}
+          />
+        </Row>
+        <Row
+          title="看完自动翻到下一步"
+          desc="按住偷看超过 1 秒、其间没有手动翻页，松开后下次偷看直接显示下一步。固定显示时不会自动翻页。"
+        >
+          <Toggle
+            label="看完自动翻到下一步"
+            checked={settings.overlayAutoAdvance}
+            onChange={(v) => onChange({ overlayAutoAdvance: v })}
           />
         </Row>
 

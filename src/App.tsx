@@ -142,6 +142,9 @@ export default function App() {
     opacity: s.overlayOpacity,
     fontSize: s.overlayFontSize,
     hotkeys: s.hotkeys,
+    view: s.overlayView,
+    split: s.overlayCardSplit,
+    autoAdvance: s.overlayAutoAdvance,
   });
 
   /* 热键：注册 / 暂停按顺序执行，避免录制结束与应用新热键交错 */
@@ -194,7 +197,14 @@ export default function App() {
   useEffect(() => {
     void emitTo(PEEK_LABEL, PEEK.style, peekStyleOf(settings)).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.overlayOpacity, settings.overlayFontSize, settings.hotkeys]);
+  }, [
+    settings.overlayOpacity,
+    settings.overlayFontSize,
+    settings.hotkeys,
+    settings.overlayView,
+    settings.overlayCardSplit,
+    settings.overlayAutoAdvance,
+  ]);
 
   useEffect(() => {
     if (overlayReady.current) enqueueHotkeys(() => overlaySetHotkeys(settings.hotkeys));
@@ -217,6 +227,14 @@ export default function App() {
       // 在悬浮层里翻到哪，主窗口就跟到哪
       listen<PeekAnchor>(PEEK.anchorBack, (e) => {
         if (e.payload.key === live.current.activeKey) readerRef.current?.jumpToAnchor(e.payload.anchor);
+      }),
+      // 悬浮层热键：切换全文 / 卡片
+      listen(PEEK.setView, () => {
+        setSettings((s) => {
+          const next: Settings = { ...s, overlayView: s.overlayView === "card" ? "scroll" : "card" };
+          live.current.settings = next;
+          return next;
+        });
       }),
     ];
     return () => uns.forEach((u) => void u.then((f) => f()));

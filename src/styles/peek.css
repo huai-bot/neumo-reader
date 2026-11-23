@@ -25,6 +25,7 @@ html.peek-root #root {
 }
 
 .peek-head {
+  position: relative;
   flex: none;
   display: flex;
   align-items: center;
@@ -172,4 +173,51 @@ html.peek-root #root {
 .peek[data-halo] .peek-head,
 .peek[data-halo] .peek-foot {
   border-color: rgba(214, 200, 189, calc(0.3 + var(--peek-alpha) * 0.4));
+}
+
+/* =========================================================
+   步骤卡片
+   ========================================================= */
+.peek-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform var(--t-mid) var(--spring-soft);
+  pointer-events: none;
+}
+.peek-badge {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  text-shadow: none;
+  animation: peek-badge 1.6s ease forwards;
+}
+@keyframes peek-badge {
+  0% {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  12%,
+  75% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+/* 卡片里的步骤：序号和任务框更醒目 */
+.peek[data-card] .peek-content .md > ol > li::marker {
+  color: var(--accent);
+  font-weight: 700;
+}
+.peek[data-card] .peek-content .md > :is(ol, ul) {
+  margin-bottom: 0.4em;
 }

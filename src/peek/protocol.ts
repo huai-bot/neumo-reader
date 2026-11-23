@@ -1,6 +1,7 @@
 import type { DocKind } from "../lib/fileTypes";
 import type { Anchor } from "../lib/state";
 import type { Hotkeys } from "../lib/hotkeys";
+import type { CardSplit } from "./cards";
 
 /** 悬浮层窗口的 label，需与 src-tauri/src/overlay.rs 一致 */
 export const PEEK_LABEL = "overlay";
@@ -16,6 +17,8 @@ export const PEEK = {
   ready: "peek:ready",
   /** 悬浮层 → 主窗口：在悬浮层里翻到的位置 */
   anchorBack: "peek:anchor-back",
+  /** 悬浮层 → 主窗口：切换全文 / 卡片 */
+  setView: "peek:set-view",
   /** 后端 → 悬浮层：显示状态 */
   visible: "peek:visible",
   /** 后端 → 悬浮层：导航热键 */
@@ -31,10 +34,17 @@ export interface PeekDoc {
   renderHtml: boolean;
 }
 
+export type PeekView = "card" | "scroll";
+
 export interface PeekStyle {
   opacity: number;
   fontSize: number;
   hotkeys: Hotkeys;
+  /** 步骤卡片 / 全文 */
+  view: PeekView;
+  split: CardSplit;
+  /** 按住偷看看完后自动翻到下一步 */
+  autoAdvance: boolean;
 }
 
 export interface PeekAnchor {
@@ -49,8 +59,8 @@ export interface PeekVisible {
 }
 
 export interface PeekNav {
-  action: "scroll" | "page" | "heading";
-  dir: -1 | 1;
+  action: "scroll" | "page" | "heading" | "view";
+  dir: -1 | 0 | 1;
   /** scroll：true 为按下，false 为松开 */
   held: boolean;
 }

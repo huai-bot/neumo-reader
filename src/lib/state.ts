@@ -1,5 +1,7 @@
 import type { Hotkeys } from "./hotkeys";
 import { DEFAULT_HOTKEYS, parseHotkeys } from "./hotkeys";
+import type { CardSplit } from "../peek/cards";
+import type { PeekView } from "../peek/protocol";
 
 export type ContentWidth = "narrow" | "medium" | "wide" | "full";
 export type SidebarTab = "files" | "outline";
@@ -26,6 +28,12 @@ export interface Settings {
   overlayFontSize: number;
   /** 悬浮层热键 */
   hotkeys: Hotkeys;
+  /** 悬浮层显示方式：步骤卡片 / 全文 */
+  overlayView: PeekView;
+  /** 卡片拆分方式 */
+  overlayCardSplit: CardSplit;
+  /** 按住偷看看完后自动翻到下一步 */
+  overlayAutoAdvance: boolean;
 }
 
 export interface Anchor {
@@ -82,6 +90,9 @@ export const DEFAULT_SETTINGS: Settings = {
   overlayBlur: true,
   overlayFontSize: 16,
   hotkeys: DEFAULT_HOTKEYS,
+  overlayView: "card",
+  overlayCardSplit: "step",
+  overlayAutoAdvance: true,
 };
 
 export const clampFont = (v: number) => Math.min(FONT_MAX, Math.max(FONT_MIN, Math.round(v)));
@@ -124,6 +135,9 @@ export function parseState(raw: string | null): PersistedState {
         ? Math.min(OVERLAY_FONT_MAX, Math.max(OVERLAY_FONT_MIN, Math.round(s.overlayFontSize)))
         : DEFAULT_SETTINGS.overlayFontSize,
     hotkeys: parseHotkeys(s.hotkeys),
+    overlayView: s.overlayView === "scroll" ? "scroll" : "card",
+    overlayCardSplit: s.overlayCardSplit === "section" ? "section" : "step",
+    overlayAutoAdvance: bool(s.overlayAutoAdvance, DEFAULT_SETTINGS.overlayAutoAdvance),
   };
   const positions: Record<string, ReadingPosition> = {};
   if (isObj(d.positions)) {

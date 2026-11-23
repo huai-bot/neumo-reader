@@ -7,7 +7,8 @@ export type HotkeyAction =
   | "pageUp"
   | "pageDown"
   | "prevSection"
-  | "nextSection";
+  | "nextSection"
+  | "toggleView";
 
 export type Hotkeys = Record<HotkeyAction, string>;
 
@@ -27,8 +28,9 @@ export const HOTKEY_ACTIONS: HotkeyMeta[] = [
   { id: "scrollDown", label: "向下滚动", desc: "按住连续滚动", global: false },
   { id: "pageUp", label: "上一页", global: false },
   { id: "pageDown", label: "下一页", global: false },
-  { id: "prevSection", label: "上一节", global: false },
-  { id: "nextSection", label: "下一节", global: false },
+  { id: "prevSection", label: "上一节 / 上一步", global: false },
+  { id: "nextSection", label: "下一节 / 下一步", global: false },
+  { id: "toggleView", label: "切换全文 / 卡片", global: false },
 ];
 
 export const DEFAULT_HOTKEYS: Hotkeys = {
@@ -40,6 +42,7 @@ export const DEFAULT_HOTKEYS: Hotkeys = {
   pageDown: "Alt+PageDown",
   prevSection: "Alt+BracketLeft",
   nextSection: "Alt+BracketRight",
+  toggleView: "Alt+Backslash",
 };
 
 const MODS = ["Ctrl", "Alt", "Shift", "Super"] as const;
