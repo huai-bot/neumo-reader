@@ -11,16 +11,15 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
-    str::FromStr,
-    sync::Mutex,
+    sync::{atomic::{AtomicBool, Ordering}, Mutex},
     time::{Duration, Instant},
 };
 use tauri::{
     AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window, WindowEvent,
 };
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState};
+use tauri_plugin_global_shortcut::{Shortcut, ShortcutEvent, ShortcutState};
 
-use crate::{monitor_for_rect, write_atomic, AppPaths};
+use crate::{hotkeys::{self, Binding}, monitor_for_rect, write_atomic, AppPaths};
 
 pub const LABEL: &str = "overlay";
 const BOUNDS_FILE: &str = "overlay.json";
@@ -81,8 +80,8 @@ impl Action {
 /// 处理热键事件的主线程不会去拿这把锁，避免死锁。
 #[derive(Default)]
 struct Keys {
-    global: Vec<Shortcut>,
-    nav: Vec<Shortcut>,
+    global: Vec<Binding>,
+    nav: Vec<Binding>,
     suspended: bool,
 }
 
@@ -115,9 +114,11 @@ struct Inner {
 pub struct Overlay {
     inner: Mutex<Inner>,
     /// 当前生效的绑定：热键事件据此查找动作（只做短暂加锁）
-    lookup: Mutex<Vec<(Action, Shortcut)>>,
+    lookup: Mutex<Vec<(Action, Binding)>>,
     /// 注册状态，同时用来串行化注册 / 注销
     keys: Mutex<Keys>,
+    /// 事件处理不能拿注册锁：标准热键注册可能正在等待主线程。
+    suspended: AtomicBool,
 }
 
 impl Default for Overlay {
@@ -135,6 +136,7 @@ impl Default for Overlay {
             }),
             lookup: Mutex::new(Vec::new()),
             keys: Mutex::new(Keys::default()),
+            suspended: AtomicBool::new(false),
         }
     }
 }
@@ -231,20 +233,17 @@ pub fn create<R: Runtime>(app: &AppHandle<R>, data_dir: &Path, webview_dir: Opti
     Ok(())
 }
 
-/// 解析并应用热键配置。缺少的动作使用默认值，空字符串表示不使用该动作（偷看除外）。
+/// 解析并应用热键配置。缺少的动作使用默认值，空字符串表示关闭该动作的快捷键。
 /// 必须在非主线程调用。
 fn apply_hotkeys<R: Runtime>(app: &AppHandle<R>, config: &HashMap<String, String>) -> HotkeyReport {
     let mut report = HotkeyReport::default();
-    let mut bound: Vec<(Action, Shortcut)> = Vec::new();
+    let mut bound: Vec<(Action, Binding)> = Vec::new();
     for (action, name, _, default) in ACTIONS {
         let raw = config.get(name).map(|s| s.trim().to_string()).unwrap_or_else(|| default.to_string());
         if raw.is_empty() {
-            if action == Action::Peek {
-                report.errors.insert(name.into(), "必须设置偷看热键".into());
-            }
             continue;
         }
-        let sc = match Shortcut::from_str(&raw) {
+        let sc = match Binding::parse(&raw) {
             Ok(sc) => sc,
             Err(_) => {
                 report.errors.insert(name.into(), format!("无法识别的按键：{raw}"));
@@ -262,9 +261,8 @@ fn apply_hotkeys<R: Runtime>(app: &AppHandle<R>, config: &HashMap<String, String
     let Ok(mut keys) = state.keys.lock() else {
         return report;
     };
-    let gs = app.global_shortcut();
     for sc in take_all(&mut keys) {
-        let _ = gs.unregister(sc);
+        hotkeys::unregister(app, sc);
     }
     if let Ok(mut l) = state.lookup.lock() {
         *l = bound.clone();
@@ -279,7 +277,7 @@ fn apply_hotkeys<R: Runtime>(app: &AppHandle<R>, config: &HashMap<String, String
     report
 }
 
-fn take_all(keys: &mut Keys) -> Vec<Shortcut> {
+fn take_all(keys: &mut Keys) -> Vec<Binding> {
     let mut v = std::mem::take(&mut keys.global);
     v.append(&mut keys.nav);
     v
@@ -289,15 +287,14 @@ fn name_of(action: Action) -> &'static str {
     ACTIONS.iter().find(|a| a.0 == action).map(|a| a.1).unwrap_or("")
 }
 
-fn register_global<R: Runtime>(app: &AppHandle<R>, keys: &mut Keys, bound: &[(Action, Shortcut)], report: &mut HotkeyReport) {
-    let gs = app.global_shortcut();
+fn register_global<R: Runtime>(app: &AppHandle<R>, keys: &mut Keys, bound: &[(Action, Binding)], report: &mut HotkeyReport) {
     for (action, sc) in bound.iter().filter(|(a, _)| a.nav().is_none()) {
-        match gs.register(*sc) {
+        match hotkeys::register(app, *sc) {
             Ok(()) => keys.global.push(*sc),
-            Err(_) => {
+            Err(e) => {
                 report
                     .errors
-                    .insert(name_of(*action).into(), "注册失败，可能已被其他程序占用".into());
+                    .insert(name_of(*action).into(), e);
             }
         }
     }
@@ -306,17 +303,16 @@ fn register_global<R: Runtime>(app: &AppHandle<R>, keys: &mut Keys, bound: &[(Ac
 fn register_nav<R: Runtime>(
     app: &AppHandle<R>,
     keys: &mut Keys,
-    bound: &[(Action, Shortcut)],
+    bound: &[(Action, Binding)],
     mut report: Option<&mut HotkeyReport>,
 ) {
-    let gs = app.global_shortcut();
     for (action, sc) in bound.iter().filter(|(a, _)| a.nav().is_some()) {
-        match gs.register(*sc) {
+        match hotkeys::register(app, *sc) {
             Ok(()) => keys.nav.push(*sc),
-            Err(_) => {
+            Err(e) => {
                 if let Some(r) = report.as_deref_mut() {
                     r.errors
-                        .insert(name_of(*action).into(), "注册失败，可能已被其他程序占用".into());
+                        .insert(name_of(*action).into(), e);
                 }
             }
         }
@@ -334,9 +330,9 @@ fn suspend_hotkeys<R: Runtime>(app: &AppHandle<R>, suspend: bool) -> HotkeyRepor
         return report;
     }
     keys.suspended = suspend;
-    let gs = app.global_shortcut();
+    state.suspended.store(suspend, Ordering::Release);
     for sc in take_all(&mut keys) {
-        let _ = gs.unregister(sc);
+        hotkeys::unregister(app, sc);
     }
     if !suspend {
         let bound = state.lookup.lock().map(|l| l.clone()).unwrap_or_default();
@@ -358,13 +354,21 @@ enum Act {
 }
 
 pub fn handle<R: Runtime>(app: &AppHandle<R>, sc: &Shortcut, ev: ShortcutEvent) {
-    let pressed = ev.state == ShortcutState::Pressed;
-    let action = app
-        .state::<Overlay>()
-        .lookup
-        .lock()
-        .ok()
-        .and_then(|l| l.iter().find(|(_, s)| s == sc).map(|(a, _)| *a));
+    // Windows 标准热键不应在菜单键组合期间额外触发。
+    if ev.state == ShortcutState::Pressed && hotkeys::menu_pressed() {
+        return;
+    }
+    handle_binding(app, Binding { shortcut: *sc, menu: false }, ev.state == ShortcutState::Pressed);
+}
+
+pub(crate) fn handle_binding<R: Runtime>(app: &AppHandle<R>, binding: Binding, pressed: bool) {
+    let state = app.state::<Overlay>();
+    let action = state.lookup.lock().ok()
+        .and_then(|l| l.iter().find(|(_, s)| *s == binding).map(|(a, _)| *a));
+    if pressed && (state.suspended.load(Ordering::Acquire)
+        || action.is_some_and(|a| a.nav().is_some()) && !state.inner.lock().map(|s| s.visible).unwrap_or(false)) {
+        return;
+    }
     match action {
         Some(Action::Peek) => on_peek(app, pressed),
         Some(Action::Adjust) => {
@@ -530,9 +534,8 @@ fn sync_nav<R: Runtime>(app: &AppHandle<R>) {
         if want == !keys.nav.is_empty() {
             return;
         }
-        let gs = app.global_shortcut();
         for sc in keys.nav.drain(..).collect::<Vec<_>>() {
-            let _ = gs.unregister(sc);
+            hotkeys::unregister(&app, sc);
         }
         if want {
             let bound = state.lookup.lock().map(|l| l.clone()).unwrap_or_default();
@@ -599,7 +602,7 @@ pub fn save_bounds<R: Runtime>(app: &AppHandle<R>) {
 /// 主窗口关闭时一并关闭悬浮层，否则进程会因为还有窗口而不退出
 pub fn on_main_destroyed<R: Runtime>(app: &AppHandle<R>) {
     save_bounds(app);
-    let _ = app.global_shortcut().unregister_all();
+    hotkeys::shutdown(app);
     if let Some(w) = window(app) {
         let _ = w.destroy();
     }

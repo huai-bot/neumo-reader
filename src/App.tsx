@@ -35,6 +35,7 @@ import type { OpenDoc, OutlineItem } from "./lib/types";
 import type { PersistedState, ReadingPosition, Settings } from "./lib/state";
 import { clampFont, DEFAULT_SETTINGS, MAX_RECENT, parseState, prunePositions } from "./lib/state";
 import { useToasts } from "./lib/useToasts";
+import { effectiveHotkeys } from "./lib/hotkeys";
 
 const toDoc = (f: TextFile): OpenDoc => ({
   key: pathKey(f.path),
@@ -141,7 +142,7 @@ export default function App() {
   const peekStyleOf = (s: Settings): PeekStyle => ({
     opacity: s.overlayOpacity,
     fontSize: s.overlayFontSize,
-    hotkeys: s.hotkeys,
+    hotkeys: effectiveHotkeys(s),
     view: s.overlayView,
     split: s.overlayCardSplit,
     autoAdvance: s.overlayAutoAdvance,
@@ -165,7 +166,7 @@ export default function App() {
       if (recording) enqueueHotkeys(async () => void (await overlaySuspendHotkeys(true)));
       else {
         enqueueHotkeys(async () => void (await overlaySuspendHotkeys(false)));
-        enqueueHotkeys(() => overlaySetHotkeys(live.current.settings.hotkeys));
+        enqueueHotkeys(() => overlaySetHotkeys(effectiveHotkeys(live.current.settings)));
       }
     },
     [enqueueHotkeys],
@@ -201,14 +202,15 @@ export default function App() {
     settings.overlayOpacity,
     settings.overlayFontSize,
     settings.hotkeys,
+    settings.hotkeyEnabled,
     settings.overlayView,
     settings.overlayCardSplit,
     settings.overlayAutoAdvance,
   ]);
 
   useEffect(() => {
-    if (overlayReady.current) enqueueHotkeys(() => overlaySetHotkeys(settings.hotkeys));
-  }, [settings.hotkeys, enqueueHotkeys]);
+    if (overlayReady.current) enqueueHotkeys(() => overlaySetHotkeys(effectiveHotkeys(settings)));
+  }, [settings.hotkeys, settings.hotkeyEnabled, enqueueHotkeys]);
 
   useEffect(() => {
     if (ready) void overlaySetBlur(settings.overlayBlur).catch(() => undefined);
@@ -433,7 +435,7 @@ export default function App() {
       // 主窗口就绪后再创建悬浮层
       enqueueHotkeys(async () => {
         try {
-          const r = await overlayInit(st.settings.hotkeys);
+          const r = await overlayInit(effectiveHotkeys(st.settings));
           overlayReady.current = true;
           const n = Object.keys(r.errors).length;
           if (n) pushToast(`有 ${n} 个悬浮层热键无法使用，请在设置中查看`, "warn");

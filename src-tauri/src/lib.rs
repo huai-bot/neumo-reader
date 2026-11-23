@@ -1,3 +1,4 @@
+mod hotkeys;
 mod overlay;
 mod tray;
 
@@ -486,6 +487,9 @@ pub fn run() {
                 }
             };
             fs::create_dir_all(&data_dir)?;
+            if let Err(e) = hotkeys::init(app.handle()) {
+                eprintln!("{e}");
+            }
             app.manage(AppPaths {
                 data_dir: data_dir.clone(),
                 portable: portable_dir.is_some(),

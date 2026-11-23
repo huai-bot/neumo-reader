@@ -1075,6 +1075,16 @@ kbd {
   align-items: flex-end;
   gap: 6px;
 }
+.hk-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.hk-enable {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .hk-field {
   min-width: 168px;
   height: 36px;

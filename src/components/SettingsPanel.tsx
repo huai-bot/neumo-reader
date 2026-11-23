@@ -10,7 +10,7 @@ import type { AppInfo } from "../lib/api";
 import { DEFAULT_SETTINGS, FONT_MAX, FONT_MIN } from "../lib/state";
 import { Knob, Lamp, NeuButton, Segmented, Toggle } from "./neu";
 import { HotkeyField } from "./HotkeyField";
-import { DEFAULT_HOTKEYS, formatHotkey, HOTKEY_ACTIONS, sameHotkeys } from "../lib/hotkeys";
+import { DEFAULT_HOTKEYS, DEFAULT_HOTKEY_ENABLED, effectiveHotkeys, formatHotkey, HOTKEY_ACTIONS, sameHotkeys } from "../lib/hotkeys";
 import { IconClose } from "./Icons";
 
 function Row({ title, desc, children }: { title: string; desc?: string; children: ReactNode }) {
@@ -40,6 +40,7 @@ export function SettingsPanel({
 }) {
   const [version, setVersion] = useState("");
   const [info, setInfo] = useState<AppInfo | null>(null);
+  const activeHotkeys = effectiveHotkeys(settings);
   useEffect(() => {
     void getVersion().then(setVersion).catch(() => setVersion(""));
     void appInfo().then(setInfo).catch(() => setInfo(null));
@@ -117,8 +118,8 @@ export function SettingsPanel({
           <div className="set-label">
             <span className="set-title">悬浮层</span>
             <span className="set-desc">
-              置顶显示、不抢焦点、鼠标可穿透，适合无边框 / 窗口化全屏的游戏。按住 <kbd>{formatHotkey(settings.hotkeys.peek)}</kbd>{" "}
-              偷看，轻按固定。
+              置顶显示、不抢焦点、鼠标可穿透，适合无边框 / 窗口化全屏的游戏。
+              {activeHotkeys.peek ? <>按住 <kbd>{formatHotkey(activeHotkeys.peek)}</kbd> 偷看，轻按固定。</> : "偷看快捷键已关闭，可用右侧按钮或托盘控制显示。"}
             </span>
           </div>
           <div className="set-ctl">
@@ -166,7 +167,7 @@ export function SettingsPanel({
 
         <Row
           title="显示方式"
-          desc={`步骤卡片：一次只显示一节或一步，适合边玩边看；全文：和主窗口一样连续滚动。悬浮层显示时也可以按 ${formatHotkey(settings.hotkeys.toggleView) || "热键"} 切换。`}
+          desc={`步骤卡片：一次只显示一节或一步，适合边玩边看；全文：和主窗口一样连续滚动。${activeHotkeys.toggleView ? `悬浮层显示时也可以按 ${formatHotkey(activeHotkeys.toggleView)} 切换。` : "切换快捷键已关闭，可在这里选择显示方式。"}`}
         >
           <Segmented<PeekView>
             label="显示方式"
@@ -202,16 +203,21 @@ export function SettingsPanel({
 
         <h3 className="set-group">悬浮层热键</h3>
         <p className="set-note">
-          点击热键后按下新的组合键；<kbd>Esc</kbd> 取消，<kbd>Backspace</kbd> 清除。滚动、翻页、换节热键只在悬浮层显示时生效。
+          点击热键后按下新的组合键；<kbd>Esc</kbd> 取消，<kbd>Backspace</kbd> 清除。菜单键可以单独使用，也可以按住再按方向键组成组合键；小键盘不受数字锁定影响。关闭右侧开关即可停用，原组合键会保留。滚动、翻页、换节热键只在悬浮层显示时生效。
         </p>
         {HOTKEY_ACTIONS.map((meta) => (
           <Row key={meta.id} title={meta.label} desc={meta.desc}>
             <HotkeyField
               meta={meta}
               value={settings.hotkeys[meta.id]}
+              enabled={settings.hotkeyEnabled[meta.id]}
               error={hotkeyErrors[meta.id]}
               onRecording={onHotkeyRecording}
-              onChange={(v) => onChange({ hotkeys: { ...settings.hotkeys, [meta.id]: v } })}
+              onEnabledChange={(v) => onChange({ hotkeyEnabled: { ...settings.hotkeyEnabled, [meta.id]: v } })}
+              onChange={(v) => onChange({
+                hotkeys: { ...settings.hotkeys, [meta.id]: v },
+                hotkeyEnabled: { ...settings.hotkeyEnabled, [meta.id]: v !== "" },
+              })}
             />
           </Row>
         ))}
@@ -223,8 +229,8 @@ export function SettingsPanel({
             <NeuButton
               size="sm"
               shape="wide"
-              disabled={sameHotkeys(settings.hotkeys, DEFAULT_HOTKEYS)}
-              onClick={() => onChange({ hotkeys: { ...DEFAULT_HOTKEYS } })}
+              disabled={sameHotkeys(settings.hotkeys, DEFAULT_HOTKEYS) && HOTKEY_ACTIONS.every((a) => settings.hotkeyEnabled[a.id])}
+              onClick={() => onChange({ hotkeys: { ...DEFAULT_HOTKEYS }, hotkeyEnabled: { ...DEFAULT_HOTKEY_ENABLED } })}
             >
               恢复默认热键
             </NeuButton>

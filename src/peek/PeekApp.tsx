@@ -442,7 +442,7 @@ export default function PeekApp() {
                 <kbd>{k}</kbd> {t} ·{" "}
               </span>
             ))}
-            轻按 <kbd>{formatHotkey(hk.peek)}</kbd> {vis.pinned ? "取消固定" : "固定"}
+            {hk.peek ? <>轻按 <kbd>{formatHotkey(hk.peek)}</kbd> {vis.pinned ? "取消固定" : "固定"}</> : "在主窗口或托盘中隐藏悬浮层"}
           </span>
         )}
       </footer>

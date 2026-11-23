@@ -1,5 +1,5 @@
-import type { Hotkeys } from "./hotkeys";
-import { DEFAULT_HOTKEYS, parseHotkeys } from "./hotkeys";
+import type { HotkeyEnabled, Hotkeys } from "./hotkeys";
+import { DEFAULT_HOTKEYS, DEFAULT_HOTKEY_ENABLED, parseHotkeyEnabled, parseHotkeys } from "./hotkeys";
 import type { CardSplit } from "../peek/cards";
 import type { PeekView } from "../peek/protocol";
 
@@ -28,6 +28,8 @@ export interface Settings {
   overlayFontSize: number;
   /** 悬浮层热键 */
   hotkeys: Hotkeys;
+  /** 各热键独立开关，关闭时保留原来的组合键 */
+  hotkeyEnabled: HotkeyEnabled;
   /** 悬浮层显示方式：步骤卡片 / 全文 */
   overlayView: PeekView;
   /** 卡片拆分方式 */
@@ -90,6 +92,7 @@ export const DEFAULT_SETTINGS: Settings = {
   overlayBlur: true,
   overlayFontSize: 16,
   hotkeys: DEFAULT_HOTKEYS,
+  hotkeyEnabled: DEFAULT_HOTKEY_ENABLED,
   overlayView: "card",
   overlayCardSplit: "step",
   overlayAutoAdvance: true,
@@ -135,6 +138,7 @@ export function parseState(raw: string | null): PersistedState {
         ? Math.min(OVERLAY_FONT_MAX, Math.max(OVERLAY_FONT_MIN, Math.round(s.overlayFontSize)))
         : DEFAULT_SETTINGS.overlayFontSize,
     hotkeys: parseHotkeys(s.hotkeys),
+    hotkeyEnabled: parseHotkeyEnabled(s.hotkeyEnabled),
     overlayView: s.overlayView === "scroll" ? "scroll" : "card",
     overlayCardSplit: s.overlayCardSplit === "section" ? "section" : "step",
     overlayAutoAdvance: bool(s.overlayAutoAdvance, DEFAULT_SETTINGS.overlayAutoAdvance),

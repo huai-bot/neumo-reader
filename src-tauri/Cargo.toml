@@ -1,6 +1,6 @@
 [package]
 name = "neumo-reader"
-version = "0.2.0"
+version = "0.2.1"
 description = "拟物阅读 - a soft UI Markdown & text reader"
 authors = ["MA SU"]
 license = "MIT"
@@ -32,4 +32,4 @@ panic = "abort"
 strip = true
 
 [target."cfg(windows)".dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_System_LibraryLoader"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_System_LibraryLoader", "Win32_UI_Input_KeyboardAndMouse"] }

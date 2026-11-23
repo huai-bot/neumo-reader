@@ -1,52 +1,57 @@
 import { useEffect, useRef, useState } from "react";
 import type { HotkeyMeta } from "../lib/hotkeys";
-import { formatHotkey, hotkeyFromEvent } from "../lib/hotkeys";
+import { eventKeyCode, formatHotkey, hotkeyFromEvent, isMenuKey } from "../lib/hotkeys";
+import { Toggle } from "./neu";
 
-/** 点击后录制一个组合键 */
+/** 点击后录制；菜单键先按住等待第二个键，单独松开则录制菜单键本身。 */
 export function HotkeyField({
-  meta,
-  value,
-  error,
-  onChange,
-  onRecording,
+  meta, value, enabled, error, onChange, onEnabledChange, onRecording,
 }: {
   meta: HotkeyMeta;
   value: string;
+  enabled: boolean;
   error?: string;
   onChange: (v: string) => void;
+  onEnabledChange: (v: boolean) => void;
   onRecording: (recording: boolean) => void;
 }) {
   const [recording, setRecording] = useState(false);
   const [preview, setPreview] = useState("");
   const [local, setLocal] = useState("");
-  const btn = useRef<HTMLButtonElement>(null);
   const live = useRef({ meta, onChange, onRecording });
   live.current = { meta, onChange, onRecording };
 
   useEffect(() => {
     if (!recording) return;
     live.current.onRecording(true);
+    let menuHeld = false;
     const stop = () => {
+      menuHeld = false;
       setRecording(false);
       setPreview("");
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      // 捕获阶段拦下，避免触发主窗口快捷键或关闭设置
       e.preventDefault();
       e.stopPropagation();
       if (e.repeat) return;
-      const noMods = !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey;
-      if (e.code === "Escape" && noMods) {
+      const code = eventKeyCode(e);
+      const noMods = !e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && !menuHeld;
+      if (code === "Escape" && noMods) {
         stop();
         return;
       }
-      if ((e.code === "Backspace" || e.code === "Delete") && noMods) {
-        if (live.current.meta.required) setLocal("这个动作必须设置热键");
-        else live.current.onChange("");
+      if ((code === "Backspace" || code === "Delete") && noMods) {
+        live.current.onChange("");
         stop();
         return;
       }
-      const r = hotkeyFromEvent(e, live.current.meta);
+      if (isMenuKey(e)) {
+        menuHeld = true;
+        const r = hotkeyFromEvent(e, live.current.meta);
+        if (r.kind === "done") setPreview(`${formatHotkey(r.value)} …`);
+        return;
+      }
+      const r = hotkeyFromEvent(e, live.current.meta, menuHeld);
       if (r.kind === "pending") setPreview(r.preview);
       else if (r.kind === "error") {
         setLocal(r.message);
@@ -59,36 +64,47 @@ export function HotkeyField({
     const onKeyUp = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) setPreview("");
+      if (isMenuKey(e) && menuHeld) {
+        const r = hotkeyFromEvent(e, live.current.meta);
+        if (r.kind === "done") live.current.onChange(r.value);
+        stop();
+      } else if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && !menuHeld) setPreview("");
     };
-    const onBlur = () => stop();
+    const onContextMenu = (e: Event) => e.preventDefault();
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("keyup", onKeyUp, true);
-    window.addEventListener("blur", onBlur);
+    window.addEventListener("contextmenu", onContextMenu, true);
+    window.addEventListener("blur", stop);
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", onKeyUp, true);
-      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("contextmenu", onContextMenu, true);
+      window.removeEventListener("blur", stop);
       live.current.onRecording(false);
     };
   }, [recording]);
 
-  const msg = local || error;
+  const msg = local || (enabled ? error : "");
   return (
     <div className="hk">
-      <button
-        ref={btn}
-        type="button"
-        className={`hk-field num ${recording ? "is-recording" : ""} ${value ? "" : "is-empty"} ${msg ? "is-error" : ""}`}
-        aria-label={`${meta.label}：${formatHotkey(value)}，点击修改`}
-        onClick={() => {
-          setLocal("");
-          setRecording((r) => !r);
-        }}
-      >
-        {recording ? preview || "请按下组合键…" : formatHotkey(value)}
-      </button>
-      {msg && !recording && <span className="hk-error">{msg}</span>}
+      <div className="hk-controls">
+        <button
+          type="button"
+          className={`hk-field num ${recording ? "is-recording" : ""} ${enabled && value ? "" : "is-empty"} ${msg ? "is-error" : ""}`}
+          aria-label={`${meta.label}：${formatHotkey(value)}${enabled ? "" : "，已关闭"}，点击修改`}
+          onClick={() => {
+            setLocal("");
+            setRecording((r) => !r);
+          }}
+        >
+          {recording ? preview || "请按下组合键…" : formatHotkey(value)}
+        </button>
+        <div className="hk-enable">
+          <Toggle label={`启用${meta.label}快捷键`} checked={enabled} onChange={onEnabledChange} />
+          <span className="set-desc">{enabled ? "开启" : "关闭"}</span>
+        </div>
+      </div>
+      {msg && !recording && <span className="hk-error" role="alert">{msg}</span>}
     </div>
   );
 }
