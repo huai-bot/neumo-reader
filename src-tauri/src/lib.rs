@@ -530,6 +530,8 @@ pub fn run() {
             app_info,
             open_data_dir,
             overlay::overlay_init,
+            overlay::overlay_set_hotkeys,
+            overlay::overlay_suspend_hotkeys,
             overlay::overlay_toggle,
             overlay::overlay_set_blur,
             overlay::overlay_status

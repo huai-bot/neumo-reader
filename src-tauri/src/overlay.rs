@@ -1,22 +1,24 @@
 //! 悬浮层（Peek）：置顶、不抢焦点、鼠标穿透的阅读小窗，用全局热键控制。
 //!
-//! - 按住 Alt+`：显示，松开即隐藏（偷看）
-//! - 轻按 Alt+`：固定显示 / 取消固定
+//! 默认热键（可在设置中修改）：
+//! - 按住 Alt+`：显示，松开即隐藏（偷看）；轻按：固定显示 / 取消固定
 //! - 显示期间：Alt+↑/↓ 滚动（按住连续滚动）、Alt+PgUp/PgDn 翻页、Alt+[ / ] 上一节 / 下一节
 //! - Alt+Shift+`：调整模式（可用鼠标拖动、缩放）
 //!
 //! 显示 / 隐藏直接调用 Win32（SW_SHOWNOACTIVATE / SW_HIDE），保证不会把焦点从游戏抢走。
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
+    str::FromStr,
     sync::Mutex,
     time::{Duration, Instant},
 };
 use tauri::{
     AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window, WindowEvent,
 };
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutEvent, ShortcutState};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutEvent, ShortcutState};
 
 use crate::{monitor_for_rect, write_atomic, AppPaths};
 
@@ -24,26 +26,68 @@ pub const LABEL: &str = "overlay";
 const BOUNDS_FILE: &str = "overlay.json";
 /// 短于这个时长的按键视为“轻按”，切换固定
 const TAP: Duration = Duration::from_millis(250);
-/// 窗口圆角（逻辑像素），需与 peek.css 中的圆角一致
-const RADIUS: f64 = 14.0;
+/// 窗口圆角（逻辑像素），需与 peek.css 中的圆角一致。
+/// Win11 由系统圆角（固定约 8px），Win10 回退到窗口区域裁剪，两者保持一致。
+const RADIUS: f64 = 8.0;
 
-const NAV: [(Code, &str, i32); 6] = [
-    (Code::ArrowUp, "scroll", -1),
-    (Code::ArrowDown, "scroll", 1),
-    (Code::PageUp, "page", -1),
-    (Code::PageDown, "page", 1),
-    (Code::BracketLeft, "heading", -1),
-    (Code::BracketRight, "heading", 1),
+/* ---------------- 热键定义 ---------------- */
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Action {
+    Peek,
+    Adjust,
+    ScrollUp,
+    ScrollDown,
+    PageUp,
+    PageDown,
+    PrevSection,
+    NextSection,
+}
+
+/// (动作, 配置里的名字, 中文名, 默认热键)
+const ACTIONS: [(Action, &str, &str, &str); 8] = [
+    (Action::Peek, "peek", "偷看 / 固定", "Alt+Backquote"),
+    (Action::Adjust, "adjust", "调整模式", "Alt+Shift+Backquote"),
+    (Action::ScrollUp, "scrollUp", "向上滚动", "Alt+ArrowUp"),
+    (Action::ScrollDown, "scrollDown", "向下滚动", "Alt+ArrowDown"),
+    (Action::PageUp, "pageUp", "上一页", "Alt+PageUp"),
+    (Action::PageDown, "pageDown", "下一页", "Alt+PageDown"),
+    (Action::PrevSection, "prevSection", "上一节", "Alt+BracketLeft"),
+    (Action::NextSection, "nextSection", "下一节", "Alt+BracketRight"),
 ];
 
-fn peek_key() -> Shortcut {
-    Shortcut::new(Some(Modifiers::ALT), Code::Backquote)
+impl Action {
+    /// 导航类动作：只在悬浮层显示时注册
+    fn nav(self) -> Option<(&'static str, i32)> {
+        match self {
+            Action::ScrollUp => Some(("scroll", -1)),
+            Action::ScrollDown => Some(("scroll", 1)),
+            Action::PageUp => Some(("page", -1)),
+            Action::PageDown => Some(("page", 1)),
+            Action::PrevSection => Some(("heading", -1)),
+            Action::NextSection => Some(("heading", 1)),
+            Action::Peek | Action::Adjust => None,
+        }
+    }
+    fn label(self) -> &'static str {
+        ACTIONS.iter().find(|a| a.0 == self).map(|a| a.2).unwrap_or("")
+    }
 }
-fn adjust_key() -> Shortcut {
-    Shortcut::new(Some(Modifiers::ALT | Modifiers::SHIFT), Code::Backquote)
+
+/// 注册状态。只在后台线程里操作（插件的注册 / 注销要等主线程），
+/// 处理热键事件的主线程不会去拿这把锁，避免死锁。
+#[derive(Default)]
+struct Keys {
+    global: Vec<Shortcut>,
+    nav: Vec<Shortcut>,
+    suspended: bool,
 }
-fn nav_key(code: Code) -> Shortcut {
-    Shortcut::new(Some(Modifiers::ALT), code)
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HotkeyReport {
+    /// 动作名 → 错误说明
+    errors: HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -62,14 +106,15 @@ struct Inner {
     was_pinned: bool,
     blur: bool,
     bounds: Option<Bounds>,
-    hotkey_error: Option<String>,
     data_dir: Option<PathBuf>,
 }
 
 pub struct Overlay {
     inner: Mutex<Inner>,
-    /// 串行化导航热键的注册 / 注销
-    nav_lock: Mutex<bool>,
+    /// 当前生效的绑定：热键事件据此查找动作（只做短暂加锁）
+    lookup: Mutex<Vec<(Action, Shortcut)>>,
+    /// 注册状态，同时用来串行化注册 / 注销
+    keys: Mutex<Keys>,
 }
 
 impl Default for Overlay {
@@ -83,10 +128,10 @@ impl Default for Overlay {
                 was_pinned: false,
                 blur: true,
                 bounds: None,
-                hotkey_error: None,
                 data_dir: None,
             }),
-            nav_lock: Mutex::new(false),
+            lookup: Mutex::new(Vec::new()),
+            keys: Mutex::new(Keys::default()),
         }
     }
 }
@@ -110,7 +155,6 @@ struct NavPayload {
 #[serde(rename_all = "camelCase")]
 pub struct OverlayStatus {
     available: bool,
-    hotkey_error: Option<String>,
     visible: bool,
     pinned: bool,
 }
@@ -184,20 +228,121 @@ pub fn create<R: Runtime>(app: &AppHandle<R>, data_dir: &Path, webview_dir: Opti
     Ok(())
 }
 
-pub fn register_hotkeys<R: Runtime>(app: &AppHandle<R>) {
+/// 解析并应用热键配置。缺少的动作使用默认值，空字符串表示不使用该动作（偷看除外）。
+/// 必须在非主线程调用。
+fn apply_hotkeys<R: Runtime>(app: &AppHandle<R>, config: &HashMap<String, String>) -> HotkeyReport {
+    let mut report = HotkeyReport::default();
+    let mut bound: Vec<(Action, Shortcut)> = Vec::new();
+    for (action, name, _, default) in ACTIONS {
+        let raw = config.get(name).map(|s| s.trim().to_string()).unwrap_or_else(|| default.to_string());
+        if raw.is_empty() {
+            if action == Action::Peek {
+                report.errors.insert(name.into(), "必须设置偷看热键".into());
+            }
+            continue;
+        }
+        let sc = match Shortcut::from_str(&raw) {
+            Ok(sc) => sc,
+            Err(_) => {
+                report.errors.insert(name.into(), format!("无法识别的按键：{raw}"));
+                continue;
+            }
+        };
+        if let Some((other, _)) = bound.iter().find(|(_, b)| *b == sc) {
+            report.errors.insert(name.into(), format!("与「{}」重复", other.label()));
+            continue;
+        }
+        bound.push((action, sc));
+    }
+
+    let state = app.state::<Overlay>();
+    let Ok(mut keys) = state.keys.lock() else {
+        return report;
+    };
     let gs = app.global_shortcut();
-    let mut errors = Vec::new();
-    if let Err(e) = gs.register(peek_key()) {
-        errors.push(format!("Alt+`：{e}"));
+    for sc in take_all(&mut keys) {
+        let _ = gs.unregister(sc);
     }
-    if let Err(e) = gs.register(adjust_key()) {
-        errors.push(format!("Alt+Shift+`：{e}"));
+    if let Ok(mut l) = state.lookup.lock() {
+        *l = bound.clone();
     }
-    if !errors.is_empty() {
-        if let Ok(mut st) = app.state::<Overlay>().inner.lock() {
-            st.hotkey_error = Some(errors.join("；"));
+    if !keys.suspended {
+        register_global(app, &mut keys, &bound, &mut report);
+        let visible = state.inner.lock().map(|s| s.visible).unwrap_or(false);
+        if visible {
+            register_nav(app, &mut keys, &bound, Some(&mut report));
         }
     }
+    report
+}
+
+fn take_all(keys: &mut Keys) -> Vec<Shortcut> {
+    let mut v = std::mem::take(&mut keys.global);
+    v.append(&mut keys.nav);
+    v
+}
+
+fn name_of(action: Action) -> &'static str {
+    ACTIONS.iter().find(|a| a.0 == action).map(|a| a.1).unwrap_or("")
+}
+
+fn register_global<R: Runtime>(app: &AppHandle<R>, keys: &mut Keys, bound: &[(Action, Shortcut)], report: &mut HotkeyReport) {
+    let gs = app.global_shortcut();
+    for (action, sc) in bound.iter().filter(|(a, _)| a.nav().is_none()) {
+        match gs.register(*sc) {
+            Ok(()) => keys.global.push(*sc),
+            Err(_) => {
+                report
+                    .errors
+                    .insert(name_of(*action).into(), "注册失败，可能已被其他程序占用".into());
+            }
+        }
+    }
+}
+
+fn register_nav<R: Runtime>(
+    app: &AppHandle<R>,
+    keys: &mut Keys,
+    bound: &[(Action, Shortcut)],
+    mut report: Option<&mut HotkeyReport>,
+) {
+    let gs = app.global_shortcut();
+    for (action, sc) in bound.iter().filter(|(a, _)| a.nav().is_some()) {
+        match gs.register(*sc) {
+            Ok(()) => keys.nav.push(*sc),
+            Err(_) => {
+                if let Some(r) = report.as_deref_mut() {
+                    r.errors
+                        .insert(name_of(*action).into(), "注册失败，可能已被其他程序占用".into());
+                }
+            }
+        }
+    }
+}
+
+/// 录制热键时暂停全部全局热键，否则按下已注册的组合键会被系统截走
+fn suspend_hotkeys<R: Runtime>(app: &AppHandle<R>, suspend: bool) -> HotkeyReport {
+    let mut report = HotkeyReport::default();
+    let state = app.state::<Overlay>();
+    let Ok(mut keys) = state.keys.lock() else {
+        return report;
+    };
+    if keys.suspended == suspend {
+        return report;
+    }
+    keys.suspended = suspend;
+    let gs = app.global_shortcut();
+    for sc in take_all(&mut keys) {
+        let _ = gs.unregister(sc);
+    }
+    if !suspend {
+        let bound = state.lookup.lock().map(|l| l.clone()).unwrap_or_default();
+        register_global(app, &mut keys, &bound, &mut report);
+        if state.inner.lock().map(|s| s.visible).unwrap_or(false) {
+            register_nav(app, &mut keys, &bound, Some(&mut report));
+        }
+    }
+    report
 }
 
 /* ---------------- 热键 ---------------- */
@@ -211,25 +356,37 @@ enum Act {
 
 pub fn handle<R: Runtime>(app: &AppHandle<R>, sc: &Shortcut, ev: ShortcutEvent) {
     let pressed = ev.state == ShortcutState::Pressed;
-    if *sc == peek_key() {
-        on_peek(app, pressed);
-    } else if *sc == adjust_key() {
-        if pressed {
-            toggle_interactive(app);
+    let action = app
+        .state::<Overlay>()
+        .lookup
+        .lock()
+        .ok()
+        .and_then(|l| l.iter().find(|(_, s)| s == sc).map(|(a, _)| *a));
+    match action {
+        Some(Action::Peek) => on_peek(app, pressed),
+        Some(Action::Adjust) => {
+            if pressed {
+                toggle_interactive(app);
+            }
         }
-    } else if let Some((_, action, dir)) = NAV.iter().find(|(c, _, _)| *sc == nav_key(*c)) {
-        // 滚动支持按住连续滚动，因此按下 / 松开都转发；其余只在按下时触发
-        if *action == "scroll" || pressed {
-            let _ = app.emit_to(
-                LABEL,
-                "peek:nav",
-                NavPayload {
-                    action,
-                    dir: *dir,
-                    held: pressed,
-                },
-            );
+        Some(a) => {
+            let Some((action, dir)) = a.nav() else {
+                return;
+            };
+            // 滚动支持按住连续滚动，因此按下 / 松开都转发；其余只在按下时触发
+            if action == "scroll" || pressed {
+                let _ = app.emit_to(
+                    LABEL,
+                    "peek:nav",
+                    NavPayload {
+                        action,
+                        dir,
+                        held: pressed,
+                    },
+                );
+            }
         }
+        None => {}
     }
 }
 
@@ -363,23 +520,21 @@ fn sync_nav<R: Runtime>(app: &AppHandle<R>) {
     let app = app.clone();
     std::thread::spawn(move || {
         let state = app.state::<Overlay>();
-        let Ok(mut registered) = state.nav_lock.lock() else {
+        let Ok(mut keys) = state.keys.lock() else {
             return;
         };
-        let want = state.inner.lock().map(|s| s.visible).unwrap_or(false);
-        if want == *registered {
+        let want = !keys.suspended && state.inner.lock().map(|s| s.visible).unwrap_or(false);
+        if want == !keys.nav.is_empty() {
             return;
         }
         let gs = app.global_shortcut();
-        for (code, _, _) in NAV {
-            let sc = nav_key(code);
-            if want {
-                let _ = gs.register(sc);
-            } else {
-                let _ = gs.unregister(sc);
-            }
+        for sc in keys.nav.drain(..).collect::<Vec<_>>() {
+            let _ = gs.unregister(sc);
         }
-        *registered = want;
+        if want {
+            let bound = state.lookup.lock().map(|l| l.clone()).unwrap_or_default();
+            register_nav(&app, &mut keys, &bound, None);
+        }
     });
 }
 
@@ -453,23 +608,31 @@ pub fn on_main_destroyed<R: Runtime>(app: &AppHandle<R>) {
 /// 不在 setup 里创建：两个 WebView2 同时用同一个数据目录初始化会报“资源在使用中”。
 /// 必须是 async 命令：同步命令跑在主线程上，在里面创建窗口会死锁。
 #[tauri::command]
-pub async fn overlay_init(app: AppHandle) -> Result<(), String> {
-    if window(&app).is_some() {
-        return Ok(());
+pub async fn overlay_init(app: AppHandle, hotkeys: HashMap<String, String>) -> Result<HotkeyReport, String> {
+    if window(&app).is_none() {
+        let (data_dir, webview_dir) = {
+            let paths = app.state::<AppPaths>();
+            let dir = paths.data_dir.clone();
+            let wv = paths.portable.then(|| dir.join("webview"));
+            (dir, wv)
+        };
+        create(&app, &data_dir, webview_dir).map_err(|e| e.to_string())?;
+        // 创建过程中系统可能短暂激活了悬浮层，把焦点还给主窗口
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.set_focus();
+        }
     }
-    let (data_dir, webview_dir) = {
-        let paths = app.state::<AppPaths>();
-        let dir = paths.data_dir.clone();
-        let wv = paths.portable.then(|| dir.join("webview"));
-        (dir, wv)
-    };
-    create(&app, &data_dir, webview_dir).map_err(|e| e.to_string())?;
-    register_hotkeys(&app);
-    // 创建过程中系统可能短暂激活了悬浮层，把焦点还给主窗口
-    if let Some(main) = app.get_webview_window("main") {
-        let _ = main.set_focus();
-    }
-    Ok(())
+    Ok(apply_hotkeys(&app, &hotkeys))
+}
+
+#[tauri::command]
+pub async fn overlay_set_hotkeys(app: AppHandle, hotkeys: HashMap<String, String>) -> HotkeyReport {
+    apply_hotkeys(&app, &hotkeys)
+}
+
+#[tauri::command]
+pub async fn overlay_suspend_hotkeys(app: AppHandle, suspend: bool) -> HotkeyReport {
+    suspend_hotkeys(&app, suspend)
 }
 
 #[tauri::command]
@@ -494,13 +657,11 @@ pub fn overlay_status(app: AppHandle) -> OverlayStatus {
     match st {
         Ok(s) => OverlayStatus {
             available: window(&app).is_some(),
-            hotkey_error: s.hotkey_error.clone(),
             visible: s.visible,
             pinned: s.pinned,
         },
         Err(_) => OverlayStatus {
             available: false,
-            hotkey_error: None,
             visible: false,
             pinned: false,
         },
@@ -514,6 +675,7 @@ mod platform {
     use tauri::{Runtime, WebviewWindow};
     use windows::core::{s, w};
     use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND};
     use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
     use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -573,9 +735,21 @@ mod platform {
             return;
         };
         unsafe {
-            let rgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, r * 2, r * 2);
-            // 设置成功后区域归系统所有，不需要手动释放
-            let _ = SetWindowRgn(hw, Some(rgn), true);
+            // Win11：交给 DWM 圆角。背景模糊由 DWM 绘制、不受窗口区域限制，
+            // 只有 DWM 自己的圆角才能把模糊层一起裁掉，并且边缘带抗锯齿。
+            let pref = DWMWCP_ROUND;
+            let dwm = DwmSetWindowAttribute(
+                hw,
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                &pref as *const _ as *const core::ffi::c_void,
+                std::mem::size_of_val(&pref) as u32,
+            );
+            if dwm.is_err() {
+                // Win10 没有系统圆角，回退到窗口区域
+                let rgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, r * 2, r * 2);
+                // 设置成功后区域归系统所有，不需要手动释放
+                let _ = SetWindowRgn(hw, Some(rgn), true);
+            }
         }
     }
 
@@ -596,10 +770,11 @@ mod platform {
 
     const WCA_ACCENT_POLICY: u32 = 19;
     const ACCENT_DISABLED: u32 = 0;
-    const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
+    const ACCENT_ENABLE_BLURBEHIND: u32 = 3;
 
     /// 背景模糊。DWM 的系统背景（Mica / Acrylic backdrop）在窗口未激活时会退化为纯色，
-    /// 悬浮层永远不激活，所以改用 SetWindowCompositionAttribute 的亚克力模糊。
+    /// 悬浮层永远不激活，所以改用 SetWindowCompositionAttribute。
+    /// 用普通模糊而不是亚克力：亚克力自带一层偏白的噪点，会吃掉大部分不透明度的调节范围。
     pub fn blur<R: Runtime>(win: &WebviewWindow<R>, on: bool) {
         let Some(h) = hwnd(win) else {
             return;
@@ -613,7 +788,7 @@ mod platform {
             };
             let f: unsafe extern "system" fn(HWND, *mut CompositionAttribute) -> i32 = std::mem::transmute(f);
             let mut policy = AccentPolicy {
-                accent_state: if on { ACCENT_ENABLE_ACRYLICBLURBEHIND } else { ACCENT_DISABLED },
+                accent_state: if on { ACCENT_ENABLE_BLURBEHIND } else { ACCENT_DISABLED },
                 accent_flags: 0,
                 // AABBGGRR：极淡的暖米白，真正的底色由页面绘制
                 gradient_color: 0x01E0_E8F2,

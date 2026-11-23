@@ -1,5 +1,6 @@
 import type { DocKind } from "../lib/fileTypes";
 import type { Anchor } from "../lib/state";
+import type { Hotkeys } from "../lib/hotkeys";
 
 /** 悬浮层窗口的 label，需与 src-tauri/src/overlay.rs 一致 */
 export const PEEK_LABEL = "overlay";
@@ -33,6 +34,7 @@ export interface PeekDoc {
 export interface PeekStyle {
   opacity: number;
   fontSize: number;
+  hotkeys: Hotkeys;
 }
 
 export interface PeekAnchor {

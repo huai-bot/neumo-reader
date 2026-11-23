@@ -15,8 +15,8 @@ html.peek-root #root {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* 与 overlay.rs 中的 RADIUS 一致 */
-  border-radius: 14px;
+  /* 与 overlay.rs 中的 RADIUS、Win11 系统圆角一致 */
+  border-radius: 8px;
   background: rgba(242, 232, 224, var(--peek-alpha));
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.55),
@@ -148,4 +148,28 @@ html.peek-root #root {
   background:
     linear-gradient(135deg, transparent 55%, rgba(47, 75, 208, 0.55) 55%, rgba(47, 75, 208, 0.55) 62%, transparent 62%),
     linear-gradient(135deg, transparent 72%, rgba(47, 75, 208, 0.55) 72%, rgba(47, 75, 208, 0.55) 79%, transparent 79%);
+}
+
+/* 提示块、表格、代码块的底色也跟随不透明度，否则半透明时会出现一块块实色 */
+.peek-content .md :is(blockquote, table, thead, tbody, tr, th, td, pre, code, kbd, [class*="alert"]) {
+  background-color: rgba(232, 220, 209, calc(var(--peek-alpha) * 0.85)) !important;
+}
+.peek-content .md pre code {
+  background-color: transparent !important;
+}
+
+/* 半透明时标题栏与提示栏的小字也加光晕 */
+.peek[data-halo] .peek-head,
+.peek[data-halo] .peek-foot {
+  text-shadow:
+    0 0 2px rgba(242, 232, 224, 0.95),
+    0 0 5px rgba(242, 232, 224, 0.7);
+}
+.peek[data-halo] .peek-foot,
+.peek[data-halo] .peek-sec {
+  color: #4a433d;
+}
+.peek[data-halo] .peek-head,
+.peek[data-halo] .peek-foot {
+  border-color: rgba(214, 200, 189, calc(0.3 + var(--peek-alpha) * 0.4));
 }

@@ -1065,3 +1065,67 @@ kbd {
     width: 110px;
   }
 }
+
+/* =========================================================
+   热键录制
+   ========================================================= */
+.hk {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.hk-field {
+  min-width: 168px;
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--r-btn);
+  background: var(--bg);
+  box-shadow: var(--inset-sm);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    box-shadow var(--t-mid) ease,
+    color var(--t-mid) ease;
+}
+.hk-field:hover {
+  box-shadow: var(--inset);
+}
+.hk-field.is-empty {
+  color: var(--text-2);
+}
+.hk-field.is-recording {
+  color: var(--accent);
+  box-shadow:
+    var(--inset-sm),
+    0 0 0 2px var(--accent-ring);
+  animation: hk-pulse 1.2s ease-in-out infinite;
+}
+.hk-field.is-error {
+  color: var(--warn);
+}
+.hk-error {
+  max-width: 260px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--warn);
+  text-align: right;
+}
+@keyframes hk-pulse {
+  50% {
+    box-shadow:
+      var(--inset-sm),
+      0 0 0 4px var(--accent-ring);
+  }
+}
+.set-note {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.set-inline .set-desc {
+  margin-left: 10px;
+}

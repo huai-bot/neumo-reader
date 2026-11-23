@@ -6,6 +6,7 @@ import { dirname, extOf } from "../lib/paths";
 import type { Anchor } from "../lib/state";
 import { applyAnchor, captureAnchor } from "../lib/anchor";
 import { PEEK } from "./protocol";
+import { DEFAULT_HOTKEYS, formatHotkey, formatPair } from "../lib/hotkeys";
 import type { PeekAnchor, PeekDoc, PeekNav, PeekStyle, PeekVisible } from "./protocol";
 
 const MAIN = "main";
@@ -16,7 +17,7 @@ const HOLD_DELAY = 220;
 
 export default function PeekApp() {
   const [doc, setDoc] = useState<PeekDoc | null>(null);
-  const [style, setStyle] = useState<PeekStyle>({ opacity: 0.9, fontSize: 16 });
+  const [style, setStyle] = useState<PeekStyle>({ opacity: 0.9, fontSize: 16, hotkeys: DEFAULT_HOTKEYS });
   const [vis, setVis] = useState<PeekVisible>({ visible: false, pinned: false, interactive: false });
   const [section, setSection] = useState("");
   const [pct, setPct] = useState(0);
@@ -205,6 +206,12 @@ export default function PeekApp() {
   /* ---------------- 渲染 ---------------- */
 
   const halo = style.opacity < 0.97;
+  const hk = style.hotkeys;
+  const hints = [
+    [formatPair(hk.scrollUp, hk.scrollDown), "滚动"],
+    [formatPair(hk.pageUp, hk.pageDown), "翻页"],
+    [formatPair(hk.prevSection, hk.nextSection), "换节"],
+  ].filter(([k]) => k);
   const ext = doc ? extOf(doc.path) : "";
   const win = getCurrentWindow();
 
@@ -252,11 +259,23 @@ export default function PeekApp() {
 
       <footer className="peek-foot">
         {vis.interactive ? (
-          <span>调整模式：拖动标题栏移动，拖右下角缩放 · <kbd>Alt Shift `</kbd> 退出</span>
+          <span>
+            调整模式：拖动标题栏移动，拖右下角缩放
+            {hk.adjust && (
+              <>
+                {" "}
+                · <kbd>{formatHotkey(hk.adjust)}</kbd> 退出
+              </>
+            )}
+          </span>
         ) : (
           <span>
-            <kbd>Alt ↑↓</kbd> 滚动 · <kbd>Alt PgUp/PgDn</kbd> 翻页 · <kbd>Alt [ ]</kbd> 换节 ·{" "}
-            <kbd>轻按 Alt `</kbd> {vis.pinned ? "取消固定" : "固定"}
+            {hints.map(([k, t]) => (
+              <span key={t}>
+                <kbd>{k}</kbd> {t} ·{" "}
+              </span>
+            ))}
+            轻按 <kbd>{formatHotkey(hk.peek)}</kbd> {vis.pinned ? "取消固定" : "固定"}
           </span>
         )}
       </footer>

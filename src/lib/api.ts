@@ -35,12 +35,19 @@ export const takeStartupFile = () => invoke<string | null>("take_startup_file");
 
 export interface OverlayStatus {
   available: boolean;
-  hotkeyError: string | null;
   visible: boolean;
   pinned: boolean;
 }
 
-export const overlayInit = () => invoke<void>("overlay_init");
+export interface HotkeyReport {
+  /** 动作名 → 错误说明 */
+  errors: Record<string, string>;
+}
+
+export const overlayInit = (hotkeys: Record<string, string>) => invoke<HotkeyReport>("overlay_init", { hotkeys });
+export const overlaySetHotkeys = (hotkeys: Record<string, string>) =>
+  invoke<HotkeyReport>("overlay_set_hotkeys", { hotkeys });
+export const overlaySuspendHotkeys = (suspend: boolean) => invoke<HotkeyReport>("overlay_suspend_hotkeys", { suspend });
 export const overlayToggle = () => invoke<void>("overlay_toggle");
 export const overlaySetBlur = (enabled: boolean) => invoke<void>("overlay_set_blur", { enabled });
 export const overlayStatus = () => invoke<OverlayStatus>("overlay_status");

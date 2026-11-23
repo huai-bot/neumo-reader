@@ -18,7 +18,8 @@ import {
   loadState,
   overlayInit,
   overlaySetBlur,
-  overlayStatus,
+  overlaySetHotkeys,
+  overlaySuspendHotkeys,
   readTextFile,
   saveState,
   takeStartupFile,
@@ -135,7 +136,35 @@ export default function App() {
 
   const peekDocOf = (d: OpenDoc | null, renderHtml: boolean): PeekDoc | null =>
     d ? { key: d.key, name: d.name, path: d.path, kind: d.kind, content: d.content, renderHtml } : null;
-  const peekStyleOf = (s: Settings): PeekStyle => ({ opacity: s.overlayOpacity, fontSize: s.overlayFontSize });
+  const peekStyleOf = (s: Settings): PeekStyle => ({
+    opacity: s.overlayOpacity,
+    fontSize: s.overlayFontSize,
+    hotkeys: s.hotkeys,
+  });
+
+  /* 热键：注册 / 暂停按顺序执行，避免录制结束与应用新热键交错 */
+  const [hotkeyErrors, setHotkeyErrors] = useState<Record<string, string>>({});
+  const overlayReady = useRef(false);
+  const hotkeyQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const enqueueHotkeys = useCallback((task: () => Promise<{ errors: Record<string, string> } | void>) => {
+    hotkeyQueue.current = hotkeyQueue.current
+      .then(task)
+      .then((r) => {
+        if (r) setHotkeyErrors(r.errors);
+      })
+      .catch((e) => console.error("热键", e));
+  }, []);
+  const onHotkeyRecording = useCallback(
+    (recording: boolean) => {
+      if (!overlayReady.current) return;
+      if (recording) enqueueHotkeys(async () => void (await overlaySuspendHotkeys(true)));
+      else {
+        enqueueHotkeys(async () => void (await overlaySuspendHotkeys(false)));
+        enqueueHotkeys(() => overlaySetHotkeys(live.current.settings.hotkeys));
+      }
+    },
+    [enqueueHotkeys],
+  );
 
   const sendPeekAnchor = useCallback(() => {
     window.clearTimeout(peekTimer.current);
@@ -163,7 +192,11 @@ export default function App() {
   useEffect(() => {
     void emitTo(PEEK_LABEL, PEEK.style, peekStyleOf(settings)).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.overlayOpacity, settings.overlayFontSize]);
+  }, [settings.overlayOpacity, settings.overlayFontSize, settings.hotkeys]);
+
+  useEffect(() => {
+    if (overlayReady.current) enqueueHotkeys(() => overlaySetHotkeys(settings.hotkeys));
+  }, [settings.hotkeys, enqueueHotkeys]);
 
   useEffect(() => {
     if (ready) void overlaySetBlur(settings.overlayBlur).catch(() => undefined);
@@ -378,12 +411,17 @@ export default function App() {
       setReady(true);
 
       // 主窗口就绪后再创建悬浮层
-      void overlayInit()
-        .then(() => overlayStatus())
-        .then((st) => {
-          if (st.hotkeyError) pushToast(`悬浮层热键注册失败（可能被其他程序占用）：${st.hotkeyError}`, "warn");
-        })
-        .catch((e) => pushToast(`悬浮层创建失败：${errText(e)}`, "warn"));
+      enqueueHotkeys(async () => {
+        try {
+          const r = await overlayInit(st.settings.hotkeys);
+          overlayReady.current = true;
+          const n = Object.keys(r.errors).length;
+          if (n) pushToast(`有 ${n} 个悬浮层热键无法使用，请在设置中查看`, "warn");
+          return r;
+        } catch (e) {
+          pushToast(`悬浮层创建失败：${errText(e)}`, "warn");
+        }
+      });
     })();
     return () => {
       cancelled = true;
@@ -598,7 +636,15 @@ export default function App() {
         </section>
       </main>
 
-      {settingsOpen && <SettingsPanel settings={settings} onChange={patchSettings} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsPanel
+          settings={settings}
+          onChange={patchSettings}
+          onClose={() => setSettingsOpen(false)}
+          hotkeyErrors={hotkeyErrors}
+          onHotkeyRecording={onHotkeyRecording}
+        />
+      )}
 
       {dragging && (
         <div className="drop-overlay">

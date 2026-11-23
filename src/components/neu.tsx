@@ -91,6 +91,8 @@ export function Knob({
   onChange,
   label,
   unit = "",
+  step = 1,
+  majorEvery = 4,
 }: {
   value: number;
   min: number;
@@ -98,11 +100,17 @@ export function Knob({
   onChange: (v: number) => void;
   label: string;
   unit?: string;
+  /** 每格的数值，刻度数为 (max - min) / step */
+  step?: number;
+  /** 每隔几格一个大刻度 */
+  majorEvery?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
-  const steps = max - min;
-  const angle = -SWEEP + ((value - min) / steps) * SWEEP * 2;
+  const range = max - min;
+  const steps = Math.round(range / step);
+  const angle = -SWEEP + ((value - min) / range) * SWEEP * 2;
+  const snap = (v: number) => Math.min(max, Math.max(min, min + Math.round((v - min) / step) * step));
 
   const fromPointer = useCallback(
     (e: PointerEvent<HTMLDivElement>) => {
@@ -113,15 +121,16 @@ export function Knob({
       const dy = e.clientY - (r.top + r.height / 2);
       let a = (Math.atan2(dx, -dy) * 180) / Math.PI;
       if (a > SWEEP || a < -SWEEP) a = a > 0 ? SWEEP : -SWEEP;
-      const v = Math.round(min + ((a + SWEEP) / (SWEEP * 2)) * steps);
+      const v = snap(min + ((a + SWEEP) / (SWEEP * 2)) * range);
       if (v !== value) onChange(v);
     },
-    [min, steps, value, onChange],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [min, max, range, step, value, onChange],
   );
 
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "ArrowUp" || e.key === "ArrowRight") onChange(Math.min(max, value + 1));
-    else if (e.key === "ArrowDown" || e.key === "ArrowLeft") onChange(Math.max(min, value - 1));
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") onChange(snap(value + step));
+    else if (e.key === "ArrowDown" || e.key === "ArrowLeft") onChange(snap(value - step));
     else if (e.key === "Home") onChange(min);
     else if (e.key === "End") onChange(max);
     else return;
@@ -135,7 +144,7 @@ export function Knob({
         return (
           <span
             key={i}
-            className={`knob-tick ${min + i <= value ? "is-lit" : ""} ${i % 4 === 0 ? "is-major" : ""}`}
+            className={`knob-tick ${min + i * step <= value ? "is-lit" : ""} ${i % majorEvery === 0 ? "is-major" : ""}`}
             style={{ transform: `rotate(${a}deg) translateY(-68px)` }}
           />
         );
@@ -150,7 +159,7 @@ export function Knob({
         aria-valuemax={max}
         aria-valuenow={value}
         onKeyDown={onKey}
-        onWheel={(e) => onChange(Math.min(max, Math.max(min, value + (e.deltaY < 0 ? 1 : -1))))}
+        onWheel={(e) => onChange(snap(value + (e.deltaY < 0 ? step : -step)))}
         onPointerDown={(e) => {
           dragging.current = true;
           e.currentTarget.setPointerCapture(e.pointerId);

@@ -7,6 +7,8 @@ import { appInfo, openDataDir, overlayToggle } from "../lib/api";
 import type { AppInfo } from "../lib/api";
 import { DEFAULT_SETTINGS, FONT_MAX, FONT_MIN } from "../lib/state";
 import { Knob, Lamp, NeuButton, Segmented, Toggle } from "./neu";
+import { HotkeyField } from "./HotkeyField";
+import { DEFAULT_HOTKEYS, formatHotkey, HOTKEY_ACTIONS, sameHotkeys } from "../lib/hotkeys";
 import { IconClose } from "./Icons";
 
 function Row({ title, desc, children }: { title: string; desc?: string; children: ReactNode }) {
@@ -25,10 +27,14 @@ export function SettingsPanel({
   settings,
   onChange,
   onClose,
+  hotkeyErrors,
+  onHotkeyRecording,
 }: {
   settings: Settings;
   onChange: (patch: Partial<Settings>) => void;
   onClose: () => void;
+  hotkeyErrors: Record<string, string>;
+  onHotkeyRecording: (recording: boolean) => void;
 }) {
   const [version, setVersion] = useState("");
   const [info, setInfo] = useState<AppInfo | null>(null);
@@ -90,15 +96,10 @@ export function SettingsPanel({
         <h3 className="set-group">悬浮层 · 游戏中看攻略</h3>
         <div className="set-row">
           <div className="set-label">
-            <span className="set-title">热键</span>
+            <span className="set-title">悬浮层</span>
             <span className="set-desc">
-              悬浮层置顶显示、不抢焦点、鼠标可穿透，适合在无边框 / 窗口化全屏的游戏里使用。
-              <br />
-              <kbd>按住 Alt `</kbd> 偷看，松开隐藏 · <kbd>轻按 Alt `</kbd> 固定 / 取消
-              <br />
-              显示时：<kbd>Alt ↑↓</kbd> 滚动（按住连续）· <kbd>Alt PgUp/PgDn</kbd> 翻页 · <kbd>Alt [ ]</kbd> 上一节 / 下一节
-              <br />
-              <kbd>Alt Shift `</kbd> 调整模式：用鼠标拖动位置、缩放大小
+              置顶显示、不抢焦点、鼠标可穿透，适合无边框 / 窗口化全屏的游戏。按住 <kbd>{formatHotkey(settings.hotkeys.peek)}</kbd>{" "}
+              偷看，轻按固定。
             </span>
           </div>
           <div className="set-ctl">
@@ -107,22 +108,29 @@ export function SettingsPanel({
             </NeuButton>
           </div>
         </div>
-        <Row title="背景不透明度" desc="只影响背景，文字始终不透明。低于 100% 时文字会加一圈光晕。">
-          <Segmented<string>
+        <div className="set-row set-row-knob">
+          <div className="set-label">
+            <span className="set-title">背景不透明度</span>
+            <span className="set-desc">
+              只影响背景，文字始终不透明；低于 <span className="num">100%</span> 时文字会加一圈光晕。拖动或滚动旋钮调整，
+              <span className="num">0%</span> 时只剩文字。
+            </span>
+            <div className="set-inline">
+              <Toggle label="背景模糊" checked={settings.overlayBlur} onChange={(v) => onChange({ overlayBlur: v })} />
+              <span className="set-desc">背景模糊：把后面的画面糊掉，半透明时更易读</span>
+            </div>
+          </div>
+          <Knob
             label="背景不透明度"
-            value={String(settings.overlayOpacity)}
-            onChange={(v) => onChange({ overlayOpacity: Number(v) })}
-            options={[
-              { value: "0.7", label: "70%" },
-              { value: "0.8", label: "80%" },
-              { value: "0.9", label: "90%" },
-              { value: "1", label: "100%" },
-            ]}
+            value={Math.round(settings.overlayOpacity * 100)}
+            min={0}
+            max={100}
+            step={5}
+            majorEvery={2}
+            unit="%"
+            onChange={(v) => onChange({ overlayOpacity: v / 100 })}
           />
-        </Row>
-        <Row title="背景模糊" desc="把悬浮层后面的画面模糊掉，半透明时文字更清楚。">
-          <Toggle label="背景模糊" checked={settings.overlayBlur} onChange={(v) => onChange({ overlayBlur: v })} />
-        </Row>
+        </div>
         <Row title="悬浮层字号">
           <Segmented<string>
             label="悬浮层字号"
@@ -136,6 +144,37 @@ export function SettingsPanel({
             ]}
           />
         </Row>
+
+        <h3 className="set-group">悬浮层热键</h3>
+        <p className="set-note">
+          点击热键后按下新的组合键；<kbd>Esc</kbd> 取消，<kbd>Backspace</kbd> 清除。滚动、翻页、换节热键只在悬浮层显示时生效。
+        </p>
+        {HOTKEY_ACTIONS.map((meta) => (
+          <Row key={meta.id} title={meta.label} desc={meta.desc}>
+            <HotkeyField
+              meta={meta}
+              value={settings.hotkeys[meta.id]}
+              error={hotkeyErrors[meta.id]}
+              onRecording={onHotkeyRecording}
+              onChange={(v) => onChange({ hotkeys: { ...settings.hotkeys, [meta.id]: v } })}
+            />
+          </Row>
+        ))}
+        <div className="set-row">
+          <div className="set-label">
+            <span className="set-desc">把全部悬浮层热键恢复为默认值。</span>
+          </div>
+          <div className="set-ctl">
+            <NeuButton
+              size="sm"
+              shape="wide"
+              disabled={sameHotkeys(settings.hotkeys, DEFAULT_HOTKEYS)}
+              onClick={() => onChange({ hotkeys: { ...DEFAULT_HOTKEYS } })}
+            >
+              恢复默认热键
+            </NeuButton>
+          </div>
+        </div>
 
         <h3 className="set-group">文件</h3>
         <Row title="文件变化时自动刷新" desc="其他程序修改了正在阅读的文件时自动重新载入，并保持阅读位置。">

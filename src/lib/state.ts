@@ -1,3 +1,6 @@
+import type { Hotkeys } from "./hotkeys";
+import { DEFAULT_HOTKEYS, parseHotkeys } from "./hotkeys";
+
 export type ContentWidth = "narrow" | "medium" | "wide" | "full";
 export type SidebarTab = "files" | "outline";
 
@@ -18,6 +21,8 @@ export interface Settings {
   overlayBlur: boolean;
   /** 悬浮层字号 */
   overlayFontSize: number;
+  /** 悬浮层热键 */
+  hotkeys: Hotkeys;
 }
 
 export interface Anchor {
@@ -49,7 +54,7 @@ export const FONT_MIN = 12;
 export const FONT_MAX = 32;
 export const MAX_RECENT = 12;
 export const MAX_POSITIONS = 300;
-export const OVERLAY_OPACITY_MIN = 0.6;
+export const OVERLAY_OPACITY_MIN = 0;
 export const OVERLAY_FONT_MIN = 12;
 export const OVERLAY_FONT_MAX = 24;
 
@@ -72,6 +77,7 @@ export const DEFAULT_SETTINGS: Settings = {
   overlayOpacity: 0.9,
   overlayBlur: true,
   overlayFontSize: 16,
+  hotkeys: DEFAULT_HOTKEYS,
 };
 
 export const clampFont = (v: number) => Math.min(FONT_MAX, Math.max(FONT_MIN, Math.round(v)));
@@ -111,6 +117,7 @@ export function parseState(raw: string | null): PersistedState {
       typeof s.overlayFontSize === "number"
         ? Math.min(OVERLAY_FONT_MAX, Math.max(OVERLAY_FONT_MIN, Math.round(s.overlayFontSize)))
         : DEFAULT_SETTINGS.overlayFontSize,
+    hotkeys: parseHotkeys(s.hotkeys),
   };
   const positions: Record<string, ReadingPosition> = {};
   if (isObj(d.positions)) {
