@@ -30,6 +30,10 @@ export interface AppInfo {
 export const appInfo = () => invoke<AppInfo>("app_info");
 export const openDataDir = () => invoke<void>("open_data_dir");
 export const takeStartupFile = () => invoke<string | null>("take_startup_file");
+/** 隐藏主窗口，程序留在托盘 */
+export const hideMain = () => invoke<void>("hide_main");
+/** 保存窗口状态后退出程序 */
+export const quitApp = () => invoke<void>("quit_app");
 
 /* ---------------- 悬浮层 ---------------- */
 

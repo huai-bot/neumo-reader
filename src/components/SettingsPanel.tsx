@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { ContentWidth, Settings } from "../lib/state";
+import type { CloseAction, ContentWidth, Settings } from "../lib/state";
 import { appInfo, openDataDir, overlayToggle } from "../lib/api";
 import type { AppInfo } from "../lib/api";
 import { DEFAULT_SETTINGS, FONT_MAX, FONT_MIN } from "../lib/state";
@@ -52,6 +52,23 @@ export function SettingsPanel({
             <IconClose size={18} />
           </NeuButton>
         </header>
+
+        <h3 className="set-group">常规</h3>
+        <Row
+          title="点击关闭按钮时"
+          desc="收到托盘后程序在后台运行，悬浮层热键仍然可用；点击托盘图标重新打开，右键托盘图标可以退出。选「询问」会在下次关闭时询问并记住选择。"
+        >
+          <Segmented<CloseAction>
+            label="点击关闭按钮时"
+            value={settings.closeAction}
+            onChange={(v) => onChange({ closeAction: v })}
+            options={[
+              { value: "ask", label: "询问" },
+              { value: "tray", label: "收到托盘" },
+              { value: "exit", label: "退出" },
+            ]}
+          />
+        </Row>
 
         <h3 className="set-group">阅读恢复</h3>
         <Row title="启动时恢复上次阅读" desc="未通过双击文件或命令行打开新文件时，重新打开上次退出时的文件，并回到当时的阅读位置。">

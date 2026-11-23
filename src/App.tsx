@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { emitTo, listen } from "@tauri-apps/api/event";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { message as messageDialog, open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { TitleBar } from "./components/TitleBar";
 import { Sidebar } from "./components/Sidebar";
@@ -15,11 +15,13 @@ import { IconOpen } from "./components/Icons";
 import {
   appInfo,
   fileStat,
+  hideMain,
   loadState,
   overlayInit,
   overlaySetBlur,
   overlaySetHotkeys,
   overlaySuspendHotkeys,
+  quitApp,
   readTextFile,
   saveState,
   takeStartupFile,
@@ -435,10 +437,65 @@ export default function App() {
     return () => void un.then((f) => f());
   }, [openPaths]);
 
-  // 退出前写盘
+  /* ---------------- 关闭 / 后台运行 ---------------- */
+
+  const quitting = useRef(false);
+  const closeDialogOpen = useRef(false);
+
+  /** 关闭按钮：根据设置收到托盘或退出；首次关闭时询问 */
+  const decideClose = useCallback(async (): Promise<"tray" | "exit" | "cancel"> => {
+    const action = live.current.settings.closeAction;
+    if (action !== "ask") return action;
+    if (closeDialogOpen.current) return "cancel";
+    closeDialogOpen.current = true;
+    try {
+      const TRAY = "收到托盘";
+      const EXIT = "直接退出";
+      const r = await messageDialog(
+        "收到托盘后，拟物阅读会在后台继续运行，悬浮层热键仍然可用；点击托盘图标可以重新打开，右键托盘图标可以退出。\n\n你的选择会被记住，之后可以在 设置 → 常规 中修改。",
+        { title: "关闭拟物阅读", kind: "info", buttons: { yes: TRAY, no: EXIT, cancel: "取消" } },
+      );
+      const choice: "tray" | "exit" | "cancel" =
+        r === TRAY || r === "Yes" ? "tray" : r === EXIT || r === "No" ? "exit" : "cancel";
+      if (choice !== "cancel") {
+        const next: Settings = { ...live.current.settings, closeAction: choice };
+        live.current.settings = next;
+        setSettings(next);
+      }
+      return choice;
+    } catch {
+      return "exit";
+    } finally {
+      closeDialogOpen.current = false;
+    }
+  }, []);
+
   useEffect(() => {
-    const un = getCurrentWindow().onCloseRequested(async () => {
+    const un = getCurrentWindow().onCloseRequested(async (event) => {
+      if (!quitting.current) {
+        const choice = await decideClose();
+        if (choice !== "exit") {
+          event.preventDefault();
+          if (choice === "tray") {
+            setSettingsOpen(false);
+            await flushPersist();
+            await hideMain().catch(() => undefined);
+          }
+          return;
+        }
+      }
+      // 退出前写盘
       await flushPersist();
+    });
+    return () => void un.then((f) => f());
+  }, [flushPersist, decideClose]);
+
+  // 托盘菜单“退出”：保存状态后退出
+  useEffect(() => {
+    const un = listen("app-quit", async () => {
+      quitting.current = true;
+      await flushPersist();
+      await quitApp();
     });
     return () => void un.then((f) => f());
   }, [flushPersist]);

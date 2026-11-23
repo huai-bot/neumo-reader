@@ -3,8 +3,11 @@ import { DEFAULT_HOTKEYS, parseHotkeys } from "./hotkeys";
 
 export type ContentWidth = "narrow" | "medium" | "wide" | "full";
 export type SidebarTab = "files" | "outline";
+/** 关闭按钮：ask 为下次关闭时询问（选择后记住） */
+export type CloseAction = "ask" | "tray" | "exit";
 
 export interface Settings {
+  closeAction: CloseAction;
   /** 未指定新文件启动时，恢复上次退出时打开的文件与阅读位置 */
   restoreLastSession: boolean;
   /** 跨会话记住每个文件的阅读位置 */
@@ -66,6 +69,7 @@ export const CONTENT_WIDTHS: Record<ContentWidth, string> = {
 };
 
 export const DEFAULT_SETTINGS: Settings = {
+  closeAction: "ask",
   restoreLastSession: true,
   rememberPositions: true,
   autoReload: true,
@@ -96,7 +100,9 @@ export function parseState(raw: string | null): PersistedState {
   const d = isObj(data) ? data : {};
   const s = isObj(d.settings) ? d.settings : {};
   const width = s.contentWidth;
+  const close = s.closeAction;
   const settings: Settings = {
+    closeAction: close === "tray" || close === "exit" ? close : "ask",
     restoreLastSession: bool(s.restoreLastSession, DEFAULT_SETTINGS.restoreLastSession),
     rememberPositions: bool(s.rememberPositions, DEFAULT_SETTINGS.rememberPositions),
     autoReload: bool(s.autoReload, DEFAULT_SETTINGS.autoReload),

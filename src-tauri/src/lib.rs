@@ -1,4 +1,5 @@
 mod overlay;
+mod tray;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -425,11 +426,31 @@ where
 }
 
 fn focus_main(app: &AppHandle) {
+    tray::show_main(app);
+}
+
+/// 保存主窗口大小位置（隐藏到托盘、从托盘退出时调用）
+pub(crate) fn save_main_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
-        let _ = w.unminimize();
-        let _ = w.show();
-        let _ = w.set_focus();
+        save_window(&w.as_ref().window());
     }
+}
+
+/// 关闭按钮选择“收到托盘”时：隐藏主窗口，程序留在后台
+#[tauri::command]
+fn hide_main(app: AppHandle) {
+    save_main_window(&app);
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.hide();
+    }
+}
+
+/// 前端保存完状态后调用，真正退出程序
+#[tauri::command]
+fn quit_app(app: AppHandle) {
+    save_main_window(&app);
+    overlay::save_bounds(&app);
+    app.exit(0);
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -507,6 +528,9 @@ pub fn run() {
             }
             window.show()?;
             let _ = window.set_focus();
+            if let Err(e) = tray::create(app.handle()) {
+                eprintln!("创建托盘图标失败：{e}");
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -529,6 +553,8 @@ pub fn run() {
             take_startup_file,
             app_info,
             open_data_dir,
+            hide_main,
+            quit_app,
             overlay::overlay_init,
             overlay::overlay_set_hotkeys,
             overlay::overlay_suspend_hotkeys,
