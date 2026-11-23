@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { ContentWidth, Settings } from "../lib/state";
-import { appInfo, openDataDir } from "../lib/api";
+import { appInfo, openDataDir, overlayToggle } from "../lib/api";
 import type { AppInfo } from "../lib/api";
 import { DEFAULT_SETTINGS, FONT_MAX, FONT_MIN } from "../lib/state";
 import { Knob, Lamp, NeuButton, Segmented, Toggle } from "./neu";
@@ -85,6 +85,56 @@ export function SettingsPanel({
         </Row>
         <Row title="渲染 Markdown 中的 HTML" desc="经过安全过滤后渲染内嵌 HTML 标签。">
           <Toggle label="渲染 HTML" checked={settings.renderHtml} onChange={(v) => onChange({ renderHtml: v })} />
+        </Row>
+
+        <h3 className="set-group">悬浮层 · 游戏中看攻略</h3>
+        <div className="set-row">
+          <div className="set-label">
+            <span className="set-title">热键</span>
+            <span className="set-desc">
+              悬浮层置顶显示、不抢焦点、鼠标可穿透，适合在无边框 / 窗口化全屏的游戏里使用。
+              <br />
+              <kbd>按住 Alt `</kbd> 偷看，松开隐藏 · <kbd>轻按 Alt `</kbd> 固定 / 取消
+              <br />
+              显示时：<kbd>Alt ↑↓</kbd> 滚动（按住连续）· <kbd>Alt PgUp/PgDn</kbd> 翻页 · <kbd>Alt [ ]</kbd> 上一节 / 下一节
+              <br />
+              <kbd>Alt Shift `</kbd> 调整模式：用鼠标拖动位置、缩放大小
+            </span>
+          </div>
+          <div className="set-ctl">
+            <NeuButton size="sm" shape="wide" onClick={() => void overlayToggle()}>
+              显示 / 隐藏
+            </NeuButton>
+          </div>
+        </div>
+        <Row title="背景不透明度" desc="只影响背景，文字始终不透明。低于 100% 时文字会加一圈光晕。">
+          <Segmented<string>
+            label="背景不透明度"
+            value={String(settings.overlayOpacity)}
+            onChange={(v) => onChange({ overlayOpacity: Number(v) })}
+            options={[
+              { value: "0.7", label: "70%" },
+              { value: "0.8", label: "80%" },
+              { value: "0.9", label: "90%" },
+              { value: "1", label: "100%" },
+            ]}
+          />
+        </Row>
+        <Row title="背景模糊" desc="把悬浮层后面的画面模糊掉，半透明时文字更清楚。">
+          <Toggle label="背景模糊" checked={settings.overlayBlur} onChange={(v) => onChange({ overlayBlur: v })} />
+        </Row>
+        <Row title="悬浮层字号">
+          <Segmented<string>
+            label="悬浮层字号"
+            value={String(settings.overlayFontSize)}
+            onChange={(v) => onChange({ overlayFontSize: Number(v) })}
+            options={[
+              { value: "14", label: "14" },
+              { value: "16", label: "16" },
+              { value: "18", label: "18" },
+              { value: "20", label: "20" },
+            ]}
+          />
         </Row>
 
         <h3 className="set-group">文件</h3>

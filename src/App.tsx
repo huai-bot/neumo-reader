@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { listen } from "@tauri-apps/api/event";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { TitleBar } from "./components/TitleBar";
@@ -12,7 +12,19 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Toasts } from "./components/Toasts";
 import { NeuButton, Lamp } from "./components/neu";
 import { IconOpen } from "./components/Icons";
-import { appInfo, fileStat, loadState, readTextFile, saveState, takeStartupFile } from "./lib/api";
+import {
+  appInfo,
+  fileStat,
+  loadState,
+  overlayInit,
+  overlaySetBlur,
+  overlayStatus,
+  readTextFile,
+  saveState,
+  takeStartupFile,
+} from "./lib/api";
+import { PEEK, PEEK_LABEL } from "./peek/protocol";
+import type { PeekAnchor, PeekDoc, PeekStyle } from "./peek/protocol";
 import type { TextFile } from "./lib/api";
 import { basename, dirname, extOf, pathKey, resolvePath } from "./lib/paths";
 import { docKind, extLabel, MARKDOWN_EXT, TEXT_EXT } from "./lib/fileTypes";
@@ -116,13 +128,65 @@ export default function App() {
     if (ready) schedulePersist();
   }, [ready, settings, docs, activeKey, recent, schedulePersist]);
 
+  /* ---------------- 悬浮层同步 ---------------- */
+
+  const peekAnchor = useRef<PeekAnchor | null>(null);
+  const peekTimer = useRef<number | undefined>(undefined);
+
+  const peekDocOf = (d: OpenDoc | null, renderHtml: boolean): PeekDoc | null =>
+    d ? { key: d.key, name: d.name, path: d.path, kind: d.kind, content: d.content, renderHtml } : null;
+  const peekStyleOf = (s: Settings): PeekStyle => ({ opacity: s.overlayOpacity, fontSize: s.overlayFontSize });
+
+  const sendPeekAnchor = useCallback(() => {
+    window.clearTimeout(peekTimer.current);
+    if (peekAnchor.current) void emitTo(PEEK_LABEL, PEEK.anchor, peekAnchor.current).catch(() => undefined);
+  }, []);
+
   const onPosition = useCallback(
     (key: string, pos: ReadingPosition) => {
       positionsRef.current[key] = pos;
       schedulePersist();
+      if (pos.anchor) {
+        peekAnchor.current = { key, anchor: pos.anchor };
+        window.clearTimeout(peekTimer.current);
+        peekTimer.current = window.setTimeout(sendPeekAnchor, 100);
+      }
     },
-    [schedulePersist],
+    [schedulePersist, sendPeekAnchor],
   );
+
+  useEffect(() => {
+    void emitTo(PEEK_LABEL, PEEK.doc, peekDocOf(activeDoc, settings.renderHtml)).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDoc?.key, activeDoc?.content, activeDoc?.name, settings.renderHtml]);
+
+  useEffect(() => {
+    void emitTo(PEEK_LABEL, PEEK.style, peekStyleOf(settings)).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.overlayOpacity, settings.overlayFontSize]);
+
+  useEffect(() => {
+    if (ready) void overlaySetBlur(settings.overlayBlur).catch(() => undefined);
+  }, [ready, settings.overlayBlur]);
+
+  useEffect(() => {
+    const uns = [
+      // 悬浮层加载完成后补发一次当前状态
+      listen(PEEK.ready, () => {
+        const { docs: ds, activeKey: ak, settings: s } = live.current;
+        void emitTo(PEEK_LABEL, PEEK.doc, peekDocOf(ds.find((d) => d.key === ak) ?? null, s.renderHtml));
+        void emitTo(PEEK_LABEL, PEEK.style, peekStyleOf(s));
+        void overlaySetBlur(s.overlayBlur).catch(() => undefined);
+        sendPeekAnchor();
+      }),
+      // 在悬浮层里翻到哪，主窗口就跟到哪
+      listen<PeekAnchor>(PEEK.anchorBack, (e) => {
+        if (e.payload.key === live.current.activeKey) readerRef.current?.jumpToAnchor(e.payload.anchor);
+      }),
+    ];
+    return () => uns.forEach((u) => void u.then((f) => f()));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendPeekAnchor]);
 
   /* ---------------- 打开 / 关闭 ---------------- */
 
@@ -290,6 +354,7 @@ export default function App() {
         })
         .catch(() => undefined);
 
+
       const startup = await takeStartupFile().catch(() => null);
       if (startup) {
         await openPaths([startup]);
@@ -311,6 +376,14 @@ export default function App() {
         if (missing > 0) pushToast(`上次打开的 ${missing} 个文件已找不到`, "warn");
       }
       setReady(true);
+
+      // 主窗口就绪后再创建悬浮层
+      void overlayInit()
+        .then(() => overlayStatus())
+        .then((st) => {
+          if (st.hotkeyError) pushToast(`悬浮层热键注册失败（可能被其他程序占用）：${st.hotkeyError}`, "warn");
+        })
+        .catch((e) => pushToast(`悬浮层创建失败：${errText(e)}`, "warn"));
     })();
     return () => {
       cancelled = true;

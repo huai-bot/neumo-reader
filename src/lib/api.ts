@@ -30,3 +30,17 @@ export interface AppInfo {
 export const appInfo = () => invoke<AppInfo>("app_info");
 export const openDataDir = () => invoke<void>("open_data_dir");
 export const takeStartupFile = () => invoke<string | null>("take_startup_file");
+
+/* ---------------- 悬浮层 ---------------- */
+
+export interface OverlayStatus {
+  available: boolean;
+  hotkeyError: string | null;
+  visible: boolean;
+  pinned: boolean;
+}
+
+export const overlayInit = () => invoke<void>("overlay_init");
+export const overlayToggle = () => invoke<void>("overlay_toggle");
+export const overlaySetBlur = (enabled: boolean) => invoke<void>("overlay_set_blur", { enabled });
+export const overlayStatus = () => invoke<OverlayStatus>("overlay_status");

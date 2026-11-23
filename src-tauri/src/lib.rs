@@ -1,3 +1,5 @@
+mod overlay;
+
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -269,6 +271,17 @@ const SETTLE: Duration = Duration::from_millis(300);
 
 /// 找到包含该位置的显示器：标题栏左上角 120×40 的区域需要落在显示器内，避免窗口“消失”在屏幕外
 fn monitor_for(monitors: &[Monitor], b: &WinBounds) -> Option<Monitor> {
+    monitor_for_rect(monitors, b.x, b.y)
+}
+
+fn monitor_for_rect(monitors: &[Monitor], x: i32, y: i32) -> Option<Monitor> {
+    let b = WinBounds {
+        x,
+        y,
+        width: 0,
+        height: 0,
+        maximized: false,
+    };
     monitors
         .iter()
         .find(|m| {
@@ -432,10 +445,16 @@ pub fn run() {
             }
             focus_main(app);
         }))
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| overlay::handle(app, shortcut, event))
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(StartupFile(Mutex::new(startup)))
         .manage(WinState(Mutex::new(Track::default())))
+        .manage(overlay::Overlay::default())
         .setup(move |app| {
             let data_dir = match &portable_dir {
                 Some(dir) => dir.clone(),
@@ -490,10 +509,17 @@ pub fn run() {
             let _ = window.set_focus();
             Ok(())
         })
-        .on_window_event(|window, event| match event {
-            WindowEvent::Moved(_) | WindowEvent::Resized(_) => track_window(window),
-            WindowEvent::CloseRequested { .. } => save_window(window),
-            _ => {}
+        .on_window_event(|window, event| {
+            if window.label() == overlay::LABEL {
+                overlay::on_event(window, event);
+                return;
+            }
+            match event {
+                WindowEvent::Moved(_) | WindowEvent::Resized(_) => track_window(window),
+                WindowEvent::CloseRequested { .. } => save_window(window),
+                WindowEvent::Destroyed => overlay::on_main_destroyed(window.app_handle()),
+                _ => {}
+            }
         })
         .invoke_handler(tauri::generate_handler![
             read_text_file,
@@ -502,7 +528,11 @@ pub fn run() {
             save_state,
             take_startup_file,
             app_info,
-            open_data_dir
+            open_data_dir,
+            overlay::overlay_init,
+            overlay::overlay_toggle,
+            overlay::overlay_set_blur,
+            overlay::overlay_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running the reader");

@@ -10,6 +10,8 @@ import { Lamp } from "./neu";
 export interface ReaderHandle {
   scrollToId: (id: string) => boolean;
   flushPosition: () => void;
+  /** 跳到指定阅读位置（悬浮层里翻到的地方） */
+  jumpToAnchor: (a: Anchor) => void;
 }
 
 interface ReaderProps {
@@ -144,6 +146,12 @@ export const Reader = memo(function Reader(props: ReaderProps) {
       },
       flushPosition: () => {
         if (!pinnedRef.current) anchorRef.current = capture();
+        report();
+      },
+      jumpToAnchor: (a: Anchor) => {
+        unpin();
+        anchorRef.current = a;
+        applyAnchor(a);
         report();
       },
     }),

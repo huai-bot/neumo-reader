@@ -1,0 +1,151 @@
+/* =========================================================
+   悬浮层（Peek）
+   叠在游戏画面上：扁平卡片、只让背景半透明，文字保持不透明并加一圈光晕。
+   ========================================================= */
+html.peek-root,
+html.peek-root body,
+html.peek-root #root {
+  background: transparent !important;
+}
+
+.peek {
+  --peek-alpha: 0.9;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 与 overlay.rs 中的 RADIUS 一致 */
+  border-radius: 14px;
+  background: rgba(242, 232, 224, var(--peek-alpha));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.55),
+    inset 0 0 0 2px rgba(214, 200, 189, 0.35);
+  color: var(--text);
+}
+
+.peek-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(214, 200, 189, 0.7);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.peek[data-interactive] .peek-head {
+  cursor: grab;
+  background: rgba(47, 75, 208, 0.06);
+}
+
+.peek-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dark);
+}
+.peek-dot.on {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+.peek-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
+.peek-sec {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-2);
+}
+.peek-sec::before {
+  content: "›";
+  margin-right: 6px;
+}
+.peek-pct {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 11.5px;
+}
+
+.peek-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 18px 16px;
+  user-select: text;
+}
+.peek-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.peek-scroll::-webkit-scrollbar-thumb {
+  border: 0;
+  background: rgba(110, 101, 94, 0.35);
+}
+
+/* 透明窗口里没有 ClearType，比正文模式稍粗、稍大 */
+.peek-content {
+  font-weight: 500;
+  line-height: 1.7;
+}
+.peek-content .md {
+  font-weight: 500;
+}
+.peek-content .md strong,
+.peek-content .md b {
+  font-weight: 700;
+}
+.peek[data-halo] .peek-content {
+  text-shadow:
+    0 0 2px rgba(242, 232, 224, 0.95),
+    0 0 5px rgba(242, 232, 224, 0.6);
+}
+/* 悬浮层里不要拟物阴影 */
+.peek-content * {
+  box-shadow: none !important;
+}
+.peek-content .code-copy,
+.peek-content button {
+  display: none !important;
+}
+
+.peek-empty {
+  color: var(--text-2);
+  text-align: center;
+  margin-top: 40%;
+}
+
+.peek-foot {
+  flex: none;
+  padding: 6px 14px 8px;
+  border-top: 1px solid rgba(214, 200, 189, 0.7);
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.peek-foot kbd {
+  font-size: 10.5px;
+  color: var(--text);
+}
+
+.peek-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  background:
+    linear-gradient(135deg, transparent 55%, rgba(47, 75, 208, 0.55) 55%, rgba(47, 75, 208, 0.55) 62%, transparent 62%),
+    linear-gradient(135deg, transparent 72%, rgba(47, 75, 208, 0.55) 72%, rgba(47, 75, 208, 0.55) 79%, transparent 79%);
+}

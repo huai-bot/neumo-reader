@@ -12,6 +12,12 @@ export interface Settings {
   contentWidth: ContentWidth;
   sidebarCollapsed: boolean;
   sidebarTab: SidebarTab;
+  /** 悬浮层背景不透明度（文字始终不透明） */
+  overlayOpacity: number;
+  /** 悬浮层背景模糊 */
+  overlayBlur: boolean;
+  /** 悬浮层字号 */
+  overlayFontSize: number;
 }
 
 export interface Anchor {
@@ -43,6 +49,9 @@ export const FONT_MIN = 12;
 export const FONT_MAX = 32;
 export const MAX_RECENT = 12;
 export const MAX_POSITIONS = 300;
+export const OVERLAY_OPACITY_MIN = 0.6;
+export const OVERLAY_FONT_MIN = 12;
+export const OVERLAY_FONT_MAX = 24;
 
 export const CONTENT_WIDTHS: Record<ContentWidth, string> = {
   narrow: "640px",
@@ -60,6 +69,9 @@ export const DEFAULT_SETTINGS: Settings = {
   contentWidth: "medium",
   sidebarCollapsed: false,
   sidebarTab: "files",
+  overlayOpacity: 0.9,
+  overlayBlur: true,
+  overlayFontSize: 16,
 };
 
 export const clampFont = (v: number) => Math.min(FONT_MAX, Math.max(FONT_MIN, Math.round(v)));
@@ -90,6 +102,15 @@ export function parseState(raw: string | null): PersistedState {
         : DEFAULT_SETTINGS.contentWidth,
     sidebarCollapsed: bool(s.sidebarCollapsed, DEFAULT_SETTINGS.sidebarCollapsed),
     sidebarTab: s.sidebarTab === "outline" ? "outline" : "files",
+    overlayOpacity:
+      typeof s.overlayOpacity === "number"
+        ? Math.min(1, Math.max(OVERLAY_OPACITY_MIN, s.overlayOpacity))
+        : DEFAULT_SETTINGS.overlayOpacity,
+    overlayBlur: bool(s.overlayBlur, DEFAULT_SETTINGS.overlayBlur),
+    overlayFontSize:
+      typeof s.overlayFontSize === "number"
+        ? Math.min(OVERLAY_FONT_MAX, Math.max(OVERLAY_FONT_MIN, Math.round(s.overlayFontSize)))
+        : DEFAULT_SETTINGS.overlayFontSize,
   };
   const positions: Record<string, ReadingPosition> = {};
   if (isObj(d.positions)) {
