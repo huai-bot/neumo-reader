@@ -356,7 +356,8 @@ export default function PeekApp() {
 
   /* ---------------- 渲染 ---------------- */
 
-  const halo = style.opacity < 0.97;
+  const outlined = style.opacity < 0.97;
+  const transparent = style.opacity < 0.5;
   const ext = doc ? extOf(doc.path) : "";
   const win = getCurrentWindow();
   const hk = style.hotkeys;
@@ -383,7 +384,8 @@ export default function PeekApp() {
     <div
       className="peek"
       data-interactive={vis.interactive || undefined}
-      data-halo={halo || undefined}
+      data-outlined={outlined || undefined}
+      data-transparent={transparent || undefined}
       data-card={cardMode || undefined}
       style={{ ["--peek-alpha" as string]: String(style.opacity) }}
     >

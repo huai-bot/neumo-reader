@@ -1,6 +1,6 @@
 /* =========================================================
    悬浮层（Peek）
-   叠在游戏画面上：扁平卡片、只让背景半透明，文字保持不透明并加一圈光晕。
+   叠在游戏画面上：扁平卡片、只让背景半透明，文字保持不透明并使用清晰描边。
    ========================================================= */
 html.peek-root,
 html.peek-root body,
@@ -104,10 +104,23 @@ html.peek-root #root {
 .peek-content .md b {
   font-weight: 700;
 }
-.peek[data-halo] .peek-content {
+/* 只描边，不模糊字形；与系统背景模糊、背景 alpha 分开处理。 */
+.peek[data-outlined] {
+  --peek-outline: rgba(242, 232, 224, 0.95);
   text-shadow:
-    0 0 2px rgba(242, 232, 224, 0.95),
-    0 0 5px rgba(242, 232, 224, 0.6);
+    -1px -1px 0 var(--peek-outline),
+    1px -1px 0 var(--peek-outline),
+    -1px 1px 0 var(--peek-outline),
+    1px 1px 0 var(--peek-outline);
+}
+/* 低不透明度时底下通常是游戏画面，浅色实心字配深色细描边更易辨认。
+   变量限定在悬浮层，同时覆盖标题、正文、列表标记、代码与快捷键提示。 */
+.peek[data-transparent] {
+  --text: #f7f5f2;
+  --text-2: #e4ded8;
+  --accent: #9aafff;
+  --warn: #ffad92;
+  --peek-outline: rgba(15, 18, 22, 0.95);
 }
 /* 悬浮层里不要拟物阴影 */
 .peek-content * {
@@ -159,19 +172,9 @@ html.peek-root #root {
   background-color: transparent !important;
 }
 
-/* 半透明时标题栏与提示栏的小字也加光晕 */
-.peek[data-halo] .peek-head,
-.peek[data-halo] .peek-foot {
-  text-shadow:
-    0 0 2px rgba(242, 232, 224, 0.95),
-    0 0 5px rgba(242, 232, 224, 0.7);
-}
-.peek[data-halo] .peek-foot,
-.peek[data-halo] .peek-sec {
-  color: #4a433d;
-}
-.peek[data-halo] .peek-head,
-.peek[data-halo] .peek-foot {
+/* 标题栏与提示栏继承同一描边，避免小字号另叠光晕。 */
+.peek[data-outlined] .peek-head,
+.peek[data-outlined] .peek-foot {
   border-color: rgba(214, 200, 189, calc(0.3 + var(--peek-alpha) * 0.4));
 }
 
