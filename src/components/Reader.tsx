@@ -357,7 +357,7 @@ export const Reader = memo(function Reader(props: ReaderProps) {
             }
           }}
         >
-          <span className="progress-fill" style={{ transform: `scaleX(${progress})` }} />
+          <span className="progress-fill" style={{ width: `${progress * 100}%`, visibility: progress > 0 ? "visible" : "hidden" }} />
         </div>
         <span className="st-pct num">{pct}%</span>
       </footer>

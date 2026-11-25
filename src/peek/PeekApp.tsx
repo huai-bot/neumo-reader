@@ -400,7 +400,7 @@ export default function PeekApp() {
         {(plainInCard || section) && <span className="peek-sec">{plainInCard ? "纯文本只能全文显示" : section}</span>}
         {advanced && <span className="peek-badge">已翻到下一步</span>}
         <span className="peek-pct num">{counter}</span>
-        {doc && <span className="peek-bar" style={{ transform: `scaleX(${progress})` }} />}
+        {doc && <span className="peek-bar" style={{ width: `${progress * 100}%`, visibility: progress > 0 ? "visible" : "hidden" }} />}
       </header>
 
       <div

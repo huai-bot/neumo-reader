@@ -184,12 +184,11 @@ html.peek-root #root {
 .peek-bar {
   position: absolute;
   left: 0;
-  right: 0;
   bottom: -1px;
   height: 2px;
+  border-radius: 1px;
   background: var(--accent);
-  transform-origin: left center;
-  transition: transform var(--t-mid) var(--spring-soft);
+  transition: width var(--t-mid) var(--spring-soft);
   pointer-events: none;
 }
 .peek-badge {
