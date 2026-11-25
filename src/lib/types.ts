@@ -8,6 +8,7 @@ export interface OpenDoc {
   modified: number;
   size: number;
   encoding: string;
+  revision: string;
   kind: DocKind;
   missing: boolean;
 }

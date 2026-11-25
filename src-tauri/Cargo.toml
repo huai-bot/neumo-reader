@@ -1,6 +1,6 @@
 [package]
 name = "neumo-reader"
-version = "0.3.0"
+version = "0.4.0"
 description = "拟物阅读 - a soft UI Markdown & text reader"
 authors = ["MA SU"]
 license = "MIT"
@@ -22,6 +22,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 encoding_rs = "0.8"
 dunce = "1"
+sha2 = "0.10"
+tempfile = "3"
 tauri-plugin-global-shortcut = "2"
 
 [profile.release]

@@ -1,4 +1,4 @@
-interface TextBlock {
+export interface TextBlock {
   text: string;
   spans: { node: Text; start: number }[];
 }
@@ -49,6 +49,15 @@ function spanAt(block: TextBlock, offset: number) {
 
 export const MATCH_PAGE = 512;
 
+export function blockRange(block: TextBlock, start: number, end: number) {
+  const first = spanAt(block, start);
+  const last = spanAt(block, end - 1);
+  const range = new Range();
+  range.setStart(first.node, start - first.start);
+  range.setEnd(last.node, end - last.start);
+  return range;
+}
+
 export function searchDocument(blocks: TextBlock[], query: string) {
   const literal = query.trim().split(/\s+/u).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
   const pattern = new RegExp(literal, "giu");
@@ -75,13 +84,7 @@ export function searchDocument(blocks: TextBlock[], query: string) {
         pattern.lastIndex = index === cursor.blockIndex ? cursor.offset : 0;
         let hit: RegExpExecArray | null;
         while (ranges.length < size && (hit = pattern.exec(block.text))) {
-          const end = pattern.lastIndex;
-          const first = spanAt(block, hit.index);
-          const last = spanAt(block, end - 1);
-          const range = new Range();
-          range.setStart(first.node, hit.index - first.start);
-          range.setEnd(last.node, end - last.start);
-          ranges.push(range);
+          ranges.push(blockRange(block, hit.index, pattern.lastIndex));
         }
       }
       return ranges;

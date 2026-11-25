@@ -7,6 +7,7 @@ export interface TextFile {
   modified: number;
   size: number;
   encoding: string;
+  revision: string;
 }
 
 export interface FileStat {
@@ -16,6 +17,9 @@ export interface FileStat {
 }
 
 export const readTextFile = (path: string) => invoke<TextFile>("read_text_file", { path });
+export const saveDocument = (path: string, expected: string, content: string) => invoke<TextFile>("save_document", { path, expected, content });
+export const loadAnnotations = (key: string) => invoke<string | null>("load_annotations", { key });
+export const saveAnnotations = (key: string, marks: string) => invoke<void>("save_annotations", { key, marks });
 export const fileStat = (path: string) => invoke<FileStat>("file_stat", { path });
 export const loadState = () => invoke<string | null>("load_state");
 export const saveState = (state: string) => invoke<void>("save_state", { state });

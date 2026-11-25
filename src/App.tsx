@@ -33,7 +33,8 @@ import { basename, dirname, extOf, pathKey, resolvePath } from "./lib/paths";
 import { docKind, MARKDOWN_EXT, TEXT_EXT } from "./lib/fileTypes";
 import type { OpenDoc, OutlineItem } from "./lib/types";
 import type { PersistedState, ReadingPosition, Settings } from "./lib/state";
-import { clampFont, DEFAULT_SETTINGS, MAX_RECENT, parseState, prunePositions } from "./lib/state";
+import { clampFont, CONTENT_WIDTHS, DEFAULT_SETTINGS, MAX_RECENT, parseState, prunePositions } from "./lib/state";
+import { isDirty, useEditor } from "./lib/useEditor";
 import { useToasts } from "./lib/useToasts";
 import { effectiveHotkeys } from "./lib/hotkeys";
 
@@ -45,6 +46,7 @@ const toDoc = (f: TextFile): OpenDoc => ({
   modified: f.modified,
   size: f.size,
   encoding: f.encoding,
+  revision: f.revision,
   kind: docKind(f.path),
   missing: false,
 });
@@ -92,13 +94,21 @@ export default function App() {
   live.current = { settings, docs, activeKey, recent, settingsOpen };
 
   const activeDoc = docs.find((d) => d.key === activeKey) ?? null;
+  const editor = useEditor((key, saved) => setDocs((items) => items.map((item) => item.key === key ? toDoc(saved) : item)));
+  const { current: editingDocs, leave: leaveEditor } = editor;
+  const draft = activeDoc ? editor.drafts[activeDoc.key] : undefined;
+  const toggleEditor = () => {
+    if (!activeDoc || settingsOpen) return;
+    if (draft) void leaveEditor(activeDoc.key);
+    else { readerRef.current?.flushPosition(); setFindKey(null); editor.begin(activeDoc); }
+  };
   const findOpen = !!activeDoc && findKey === activeDoc.key;
   const closeFind = useCallback(() => {
     setFindKey(null);
     readerRef.current?.focusReading();
   }, []);
   const openFind = () => {
-    if (!activeDoc || settingsOpen) return;
+    if (!activeDoc || settingsOpen || draft) return;
     if (findOpen) readerRef.current?.focusFind();
     else setFindKey(activeDoc.key);
   };
@@ -325,7 +335,8 @@ export default function App() {
     setActiveKey(key);
   }, []);
 
-  const closeDoc = useCallback((key: string) => {
+  const closeDoc = useCallback(async (key: string) => {
+    if (!await leaveEditor(key)) return;
     readerRef.current?.flushPosition();
     const list = live.current.docs;
     const idx = list.findIndex((d) => d.key === key);
@@ -338,7 +349,7 @@ export default function App() {
       live.current.activeKey = k;
       setActiveKey(k);
     }
-  }, []);
+  }, [leaveEditor]);
 
   const cycleDoc = useCallback(
     (dir: 1 | -1) => {
@@ -355,7 +366,7 @@ export default function App() {
   const checkDoc = useCallback(
     async (key: string, force = false) => {
       const doc = live.current.docs.find((d) => d.key === key);
-      if (!doc) return;
+      if (!doc || editingDocs.current[key]) return;
       try {
         const st = await fileStat(doc.path);
         if (!st.exists) {
@@ -367,13 +378,14 @@ export default function App() {
         }
         if (!force && !doc.missing && st.modified === doc.modified && st.size === doc.size) return;
         const f = await readTextFile(doc.path);
+        if (editingDocs.current[key]) return;
         setDocs((prev) => prev.map((d) => (d.key === key ? { ...toDoc(f), key: d.key } : d)));
         if (force) pushToast(`已重新载入 ${doc.name}`);
       } catch (e) {
         if (force) pushToast(`重新载入失败：${errText(e)}`, "warn");
       }
     },
-    [pushToast],
+    [pushToast, editingDocs],
   );
 
   useEffect(() => {
@@ -514,20 +526,26 @@ export default function App() {
         }
       }
       // 退出前写盘
+      if (!await leaveEditor()) { event.preventDefault(); return; }
       await flushPersist();
     });
     return () => void un.then((f) => f());
-  }, [flushPersist, decideClose]);
+  }, [flushPersist, decideClose, leaveEditor]);
 
   // 托盘菜单“退出”：保存状态后退出
   useEffect(() => {
     const un = listen("app-quit", async () => {
+      if (Object.values(editingDocs.current).some(isDirty)) {
+        const main = getCurrentWindow();
+        await main.show(); await main.unminimize(); await main.setFocus();
+      }
+      if (!await leaveEditor()) return;
       quitting.current = true;
       await flushPersist();
       await quitApp();
     });
     return () => void un.then((f) => f());
-  }, [flushPersist]);
+  }, [flushPersist, editingDocs, leaveEditor]);
 
   // 拖拽打开
   useEffect(() => {
@@ -607,6 +625,11 @@ export default function App() {
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
   keyHandler.current = (e: KeyboardEvent) => {
     if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+    if ((e.target as HTMLElement | null)?.closest(".annotation-tools")) return;
+    if (!settingsOpen && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+      if (e.key.toLowerCase() === "e") { e.preventDefault(); toggleEditor(); return; }
+      if (e.key.toLowerCase() === "s") { e.preventDefault(); if (draft && activeDoc) void editor.save(activeDoc); return; }
+    }
     if (e.key === "Escape" && live.current.settingsOpen) {
       setSettingsOpen(false);
       return;
@@ -666,6 +689,12 @@ export default function App() {
         canFind={!!activeDoc}
         findOpen={findOpen}
         onFind={findOpen ? closeFind : openFind}
+        canEdit={!!activeDoc}
+        editing={!!draft}
+        dirty={!!draft && isDirty(draft)}
+        saving={!!draft?.saving}
+        onEdit={toggleEditor}
+        onSave={() => { if (activeDoc) void editor.save(activeDoc); }}
         title={activeDoc ? activeDoc.name : "拟物阅读"}
         subtitle={activeDoc ? dirname(activeDoc.path) : ""}
         fontSize={settings.fontSize}
@@ -683,8 +712,10 @@ export default function App() {
           docs={docs}
           activeKey={activeKey}
           recent={recent}
-          outline={activeDoc ? outline : []}
+          outline={activeDoc && !draft ? outline : []}
           activeHeading={activeHeading}
+          editing={!!draft}
+          dirtyKeys={Object.keys(editor.drafts).filter((key) => isDirty(editor.drafts[key]))}
           onSelect={selectDoc}
           onCloseDoc={closeDoc}
           onOpenRecent={(p) => void openPaths([p])}
@@ -695,7 +726,14 @@ export default function App() {
         />
 
         <section className="stage">
-          {activeDoc ? (
+          {activeDoc && draft ? (
+            <div className="source-editor" key={activeDoc.key}>
+              <textarea className="source-text" aria-label={activeDoc.kind === "markdown" ? "Markdown 源文" : "正文编辑"}
+                style={{ fontSize: settings.fontSize, maxWidth: CONTENT_WIDTHS[settings.contentWidth] }}
+                spellCheck={false} autoFocus readOnly={draft.saving} value={draft.text} onChange={(event) => editor.change(activeDoc.key, event.target.value)} />
+              {draft.error && <p className="editor-error" role="alert">{draft.error}</p>}
+            </div>
+          ) : activeDoc ? (
             <Reader
               key={activeDoc.key}
               ref={readerRef}
@@ -712,6 +750,7 @@ export default function App() {
               onActiveHeading={setActiveHeading}
               onLink={handleLink}
               onFontStep={fontStep}
+              onWarn={pushToast}
             />
           ) : (
             ready && (

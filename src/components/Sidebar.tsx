@@ -13,6 +13,8 @@ interface SidebarProps {
   recent: string[];
   outline: OutlineItem[];
   activeHeading: string | null;
+  editing: boolean;
+  dirtyKeys: string[];
   onSelect: (key: string) => void;
   onCloseDoc: (key: string) => void;
   onOpenRecent: (path: string) => void;
@@ -60,7 +62,7 @@ export function Sidebar(p: SidebarProps) {
                     <button type="button" className="sb-item-main" onClick={() => p.onSelect(d.key)} title={d.path}>
                       <Lamp state={d.missing ? "warn" : d.key === p.activeKey ? "on" : "off"} />
                       <span className="sb-text">
-                        <span className="sb-name">{d.name}</span>
+                        <span className="sb-name">{d.name}{p.dirtyKeys.includes(d.key) && <span className="edit-dirty" aria-label="未保存" />}</span>
                         <span className="sb-dir">{dirname(d.path)}</span>
                       </span>
                     </button>
@@ -99,7 +101,7 @@ export function Sidebar(p: SidebarProps) {
         ) : (
           <div className="sb-scroll">
             {p.outline.length === 0 ? (
-              <p className="sb-empty">{activeDoc ? (activeDoc.kind === "markdown" ? "此文档没有标题" : "纯文本文件没有大纲") : "打开文件后显示大纲"}</p>
+              <p className="sb-empty">{p.editing ? "返回阅读后可跳转大纲" : activeDoc ? (activeDoc.kind === "markdown" ? "此文档没有标题" : "纯文本文件没有大纲") : "打开文件后显示大纲"}</p>
             ) : (
               <nav className="outline">
                 {p.outline.map((o) => (

@@ -6,6 +6,7 @@ import { CONTENT_WIDTHS } from "../lib/state";
 import { dirname, extOf } from "../lib/paths";
 import { MarkdownView } from "../markdown/MarkdownView";
 import { DocumentSearch } from "./DocumentSearch";
+import { AnnotationTools } from "./AnnotationTools";
 import { Lamp } from "./neu";
 
 export interface ReaderHandle {
@@ -32,6 +33,7 @@ interface ReaderProps {
   onActiveHeading: (id: string | null) => void;
   onLink: (href: string) => void;
   onFontStep: (delta: number) => void;
+  onWarn: (message: string, tone: "warn") => void;
 }
 
 const PROSE_TEXT = ["txt", "text", ""];
@@ -315,6 +317,7 @@ export const Reader = memo(function Reader(props: ReaderProps) {
         </div>
       </div>
 
+      <AnnotationTools docKey={doc.key} content={doc.content} renderHtml={renderHtml} contentRef={contentRef} scrollRef={scrollRef} onWarn={props.onWarn} />
       <footer className="statusbar">
         <span className="st-item">
           <Lamp state={doc.missing ? "warn" : autoReload ? "on" : "off"} />

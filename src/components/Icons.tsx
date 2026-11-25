@@ -49,6 +49,13 @@ export const IconSearch = (props: P) => (
 export const IconChevron = ({ up = false }: { up?: boolean }) => (
   <Svg size={16}><path d={up ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} /></Svg>
 );
+export const IconEdit = (props: P) => <Svg {...props}><path d="m4 20 4.8-1.1L20 7.7a2.1 2.1 0 0 0-3.7-3.7L5.1 15.2 4 20ZM14.5 5.8l3.7 3.7" /></Svg>;
+export const IconSave = (props: P) => <Svg {...props}><path d="M5 4.5h12l3 3v12H4.5v-15ZM8 4.5v5h8v-5M8 19v-6h8v6" /></Svg>;
+export const IconUnderline = (props: P) => <Svg {...props}><path d="M7 4v6a5 5 0 0 0 10 0V4M4.5 20h15" /></Svg>;
+export const IconHighlight = (props: P) => <Svg {...props}><path d="m7 13 8.5-9 4.5 4.5-9 8.5L7 13Zm1.3 1.5-3.5 3.6 1.6 1.4L10 16M4 21h9" /></Svg>;
+export const IconNote = (props: P) => <Svg {...props}><path d="M5 4.5h14a1.5 1.5 0 0 1 1.5 1.5v10a1.5 1.5 0 0 1-1.5 1.5h-7L6 21v-3.5H5A1.5 1.5 0 0 1 3.5 16V6A1.5 1.5 0 0 1 5 4.5Z M8 9h8m-8 4h5" /></Svg>;
+export const IconTrash = (props: P) => <Svg {...props}><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13M10 10.5v6m4-6v6" /></Svg>;
+export const IconCopy = (props: P) => <Svg {...props}><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M15.5 5V3.5h-12v13H5"/></Svg>;
 export const IconMinus = (p: P) => (
   <Svg {...p}>
     <path d="M6 12h12" />

@@ -1,4 +1,5 @@
 mod hotkeys;
+mod documents;
 mod overlay;
 mod tray;
 
@@ -81,6 +82,7 @@ struct TextFile {
     modified: f64,
     size: u64,
     encoding: String,
+    revision: String,
 }
 
 #[derive(Serialize)]
@@ -142,6 +144,7 @@ fn read_text_file(app: AppHandle, path: String) -> Result<TextFile, String> {
     }
     let bytes = fs::read(&p).map_err(|e| io_msg(&e))?;
     let (content, encoding) = decode(&bytes)?;
+    app.state::<documents::Opened>().remember(&p)?;
 
     // 允许正文引用同目录及上一级目录中的本地图片
     let scope = app.asset_protocol_scope();
@@ -162,6 +165,7 @@ fn read_text_file(app: AppHandle, path: String) -> Result<TextFile, String> {
         modified: modified_ms(&meta),
         size: meta.len(),
         encoding: encoding.to_string(),
+        revision: documents::revision(&bytes),
     })
 }
 
@@ -478,6 +482,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(StartupFile(Mutex::new(startup)))
+        .manage(documents::Opened::default())
         .manage(WinState(Mutex::new(Track::default())))
         .manage(overlay::Overlay::default())
         .setup(move |app| {
@@ -557,6 +562,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_text_file,
+            documents::save_document,
+            documents::load_annotations,
+            documents::save_annotations,
             file_stat,
             load_state,
             save_state,

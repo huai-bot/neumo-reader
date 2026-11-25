@@ -3,6 +3,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { NeuButton } from "./neu";
 import {
   IconClose,
+  IconEdit,
+  IconSave,
   IconMinus,
   IconOpen,
   IconPlus,
@@ -22,6 +24,12 @@ interface TitleBarProps {
   canFind: boolean;
   findOpen: boolean;
   onFind: () => void;
+  canEdit: boolean;
+  editing: boolean;
+  dirty: boolean;
+  saving: boolean;
+  onEdit: () => void;
+  onSave: () => void;
   title: string;
   subtitle: string;
   fontSize: number;
@@ -56,7 +64,7 @@ export function TitleBar(p: TitleBarProps) {
 
       <div className="tb-title" data-tauri-drag-region>
         <span className="tb-name" data-tauri-drag-region>
-          {p.title}
+          {p.title}{p.dirty && <span className="edit-dirty" aria-label="未保存" title="未保存" />}
         </span>
         {p.subtitle && (
           <span className="tb-sub" data-tauri-drag-region title={p.subtitle}>
@@ -66,9 +74,13 @@ export function TitleBar(p: TitleBarProps) {
       </div>
 
       <div className="tb-group">
+        <NeuButton on={p.editing} disabled={!p.canEdit || p.saving} onClick={p.onEdit} title={p.editing ? "返回阅读 (Ctrl+E)" : "编辑文档 (Ctrl+E)"} aria-label={p.editing ? "返回阅读" : "编辑文档"}>
+          <IconEdit />
+        </NeuButton>
+        {p.editing ? <NeuButton disabled={!p.dirty || p.saving} onClick={p.onSave} title="保存 (Ctrl+S)" aria-label="保存文档"><IconSave /></NeuButton> : (
         <NeuButton disabled={!p.canFind} on={p.findOpen} onClick={p.onFind} title="文档内查找 (Ctrl+F)" aria-label="文档内查找" aria-expanded={p.findOpen}>
           <IconSearch />
-        </NeuButton>
+        </NeuButton>)}
         <div className="font-ctl" role="group" aria-label="字号">
           <NeuButton size="sm" onClick={() => p.onFontStep(-1)} disabled={p.fontSize <= FONT_MIN} title="缩小 (Ctrl+-)" aria-label="缩小字号">
             <IconMinus size={18} />
