@@ -74,7 +74,7 @@ export function TitleBar(p: TitleBarProps) {
       </div>
 
       <div className="tb-group">
-        <NeuButton on={p.editing} disabled={!p.canEdit || p.saving} onClick={p.onEdit} title={p.editing ? "返回阅读 (Ctrl+E)" : "编辑文档 (Ctrl+E)"} aria-label={p.editing ? "返回阅读" : "编辑文档"}>
+        <NeuButton data-edit-toggle on={p.editing} disabled={!p.canEdit || p.saving} onMouseDown={event => event.preventDefault()} onClick={p.onEdit} title={p.editing ? "返回阅读 (Ctrl+E)" : "编辑文档 (Ctrl+E)"} aria-label={p.editing ? "返回阅读" : "编辑文档"}>
           <IconEdit />
         </NeuButton>
         {p.editing ? <NeuButton disabled={!p.dirty || p.saving} onClick={p.onSave} title="保存 (Ctrl+S)" aria-label="保存文档"><IconSave /></NeuButton> : (

@@ -3,6 +3,9 @@ import { memo, useCallback, useMemo, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import Markdown from "react-markdown";
 import type { Components } from "react-markdown";
+import type { Root, Element as HastElement } from "hast";
+import type { Plugin } from "unified";
+import { visit } from "unist-util-visit";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
@@ -29,6 +32,23 @@ const sanitizeSchema = {
 };
 const rehypeDefault: RehypePlugins = [rehypeKatex, rehypeSlug];
 const rehypeWithHtml: RehypePlugins = [rehypeRaw, [rehypeSanitize, sanitizeSchema], rehypeKatex, rehypeSlug];
+const sourcePositions: Plugin<[], Root> = () => (tree, file) => {
+  const source = String(file);
+  const extraByLine = [0];
+  if (source.includes("\r\n")) {
+    let extra = 0;
+    for (const lineEnd of source.matchAll(/\r\n|[\r\n]/g)) extraByLine.push(extra += lineEnd[0].length - 1);
+  }
+  visit(tree, "element", (node) => {
+    const { start, end } = node.position ?? {};
+    if (start?.offset !== undefined && end?.offset !== undefined) {
+      node.properties.dataSourcePos = `${start.offset - (extraByLine[start.line - 1] ?? 0)}:${end.offset - (extraByLine[end.line - 1] ?? 0)}`;
+    }
+  });
+};
+const mappedMarkdown: RehypePlugins = [...rehypeDefault, sourcePositions];
+const mappedHtml: RehypePlugins = [...rehypeWithHtml, sourcePositions];
+const sourcePos = (node?: HastElement) => typeof node?.properties.dataSourcePos === "string" ? node.properties.dataSourcePos : undefined;
 
 const ALERT_TITLES: Record<string, string> = {
   note: "备注",
@@ -49,7 +69,7 @@ function extractText(node: ReactNode): string {
   return "";
 }
 
-function CodeBlock({ children, language }: { children: ReactNode; language: string }) {
+function CodeBlock({ children, language, position }: { children: ReactNode; language: string; position?: string }) {
   const [copied, setCopied] = useState(false);
   const copy = useCallback(() => {
     void navigator.clipboard.writeText(extractText(children).replace(/\n$/, "")).then(() => {
@@ -58,7 +78,7 @@ function CodeBlock({ children, language }: { children: ReactNode; language: stri
     });
   }, [children]);
   return (
-    <div className={`md-code ${language ? "has-lang" : ""}`}>
+    <div className={`md-code ${language ? "has-lang" : ""}`} data-source-pos={position}>
       <pre>{children}</pre>
       {language && <span className="md-code-lang">{language}</span>}
       <button type="button" className={`md-copy ${copied ? "is-done" : ""}`} onClick={copy}>
@@ -82,38 +102,40 @@ function resolveImageSrc(src: unknown, baseDir: string): string | undefined {
 
 interface MarkdownViewProps {
   content: string;
+  trackSource?: boolean;
   renderHtml: boolean;
   baseDir: string;
   onLink: (href: string) => void;
 }
 
-export const MarkdownView = memo(function MarkdownView({ content, renderHtml, baseDir, onLink }: MarkdownViewProps) {
+export const MarkdownView = memo(function MarkdownView({ content, renderHtml, baseDir, onLink, trackSource }: MarkdownViewProps) {
   const components = useMemo<Components>(
     () => ({
-      pre: ({ children }) => {
+      pre: ({ children, node }) => {
         let language = "";
         if (children != null && typeof children === "object" && "props" in (children as ReactElement)) {
           const cls = (children as ReactElement<{ className?: string }>).props.className;
           language = cls?.match(/language-(\S+)/)?.[1] ?? "";
         }
-        if (language === "math") return <pre>{children}</pre>;
-        return <CodeBlock language={language}>{children}</CodeBlock>;
+        if (language === "math") return <pre data-source-pos={sourcePos(node)}>{children}</pre>;
+        return <CodeBlock language={language} position={sourcePos(node)}>{children}</CodeBlock>;
       },
       blockquote: ({ children, node }) => {
         const props = (node?.properties ?? {}) as Record<string, unknown>;
         const type = String(props.dataAlertType ?? props["data-alert-type"] ?? "");
         if (type) {
           return (
-            <div className={`md-alert md-alert-${type}`} role="note">
+            <div className={`md-alert md-alert-${type}`} role="note" data-source-pos={sourcePos(node)}>
               <p className="md-alert-title">{ALERT_TITLES[type] ?? type.toUpperCase()}</p>
               {children}
             </div>
           );
         }
-        return <blockquote>{children}</blockquote>;
+        return <blockquote data-source-pos={sourcePos(node)}>{children}</blockquote>;
       },
-      a: ({ href, children, title }) => (
+      a: ({ href, children, title, node }) => (
         <a
+          data-source-pos={sourcePos(node)}
           href={href}
           title={title ?? href}
           onClick={(e) => {
@@ -124,11 +146,11 @@ export const MarkdownView = memo(function MarkdownView({ content, renderHtml, ba
           {children}
         </a>
       ),
-      img: ({ src, alt, title, width, height }) => (
-        <img src={resolveImageSrc(src, baseDir)} alt={alt ?? ""} title={title} width={width} height={height} />
+      img: ({ src, alt, title, width, height, node }) => (
+        <img src={resolveImageSrc(src, baseDir)} alt={alt ?? ""} title={title} width={width} height={height} data-source-pos={sourcePos(node)} />
       ),
-      table: ({ children }) => (
-        <div className="md-table-wrap">
+      table: ({ children, node }) => (
+        <div className="md-table-wrap" data-source-pos={sourcePos(node)}>
           <table>{children}</table>
         </div>
       ),
@@ -138,8 +160,9 @@ export const MarkdownView = memo(function MarkdownView({ content, renderHtml, ba
     [baseDir, onLink],
   );
 
+  const plugins = trackSource ? (renderHtml ? mappedHtml : mappedMarkdown) : (renderHtml ? rehypeWithHtml : rehypeDefault);
   return (
-    <Markdown remarkPlugins={remarkPlugins} rehypePlugins={renderHtml ? rehypeWithHtml : rehypeDefault} components={components}>
+    <Markdown remarkPlugins={remarkPlugins} rehypePlugins={plugins} components={components}>
       {content}
     </Markdown>
   );

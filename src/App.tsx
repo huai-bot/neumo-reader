@@ -35,6 +35,7 @@ import type { OpenDoc, OutlineItem } from "./lib/types";
 import type { PersistedState, ReadingPosition, Settings } from "./lib/state";
 import { clampFont, CONTENT_WIDTHS, DEFAULT_SETTINGS, MAX_RECENT, parseState, prunePositions } from "./lib/state";
 import { isDirty, useEditor } from "./lib/useEditor";
+import { afterDiscard, fromEditor, openEditorAt, type SourcePoint } from "./lib/modePosition";
 import { useToasts } from "./lib/useToasts";
 import { effectiveHotkeys } from "./lib/hotkeys";
 
@@ -88,6 +89,8 @@ export default function App() {
 
   const positionsRef = useRef<Record<string, ReadingPosition>>({});
   const readerRef = useRef<ReaderHandle>(null);
+  const editorArea = useRef<HTMLTextAreaElement | null>(null);
+  const readerEntry = useRef<{ key: string; point: SourcePoint } | null>(null);
   const pendingHash = useRef<{ key: string; id: string } | null>(null);
   const persistTimer = useRef<number | undefined>(undefined);
   const live = useRef({ settings, docs, activeKey, recent, settingsOpen });
@@ -97,10 +100,28 @@ export default function App() {
   const editor = useEditor((key, saved) => setDocs((items) => items.map((item) => item.key === key ? toDoc(saved) : item)));
   const { current: editingDocs, leave: leaveEditor } = editor;
   const draft = activeDoc ? editor.drafts[activeDoc.key] : undefined;
+  const view = draft?.view;
+  const attachEditor = useCallback((area: HTMLTextAreaElement | null) => {
+    if (!area || !view) return;
+    editorArea.current = area;
+    openEditorAt(area, view);
+    return () => {
+      view.saved = { top: area.scrollTop, start: area.selectionStart, end: area.selectionEnd, direction: area.selectionDirection };
+      editorArea.current = null;
+    };
+  }, [view]);
   const toggleEditor = () => {
     if (!activeDoc || settingsOpen) return;
-    if (draft) void leaveEditor(activeDoc.key);
-    else { readerRef.current?.flushPosition(); setFindKey(null); editor.begin(activeDoc); }
+    if (draft) {
+      void leaveEditor(activeDoc.key, () => {
+        if (editorArea.current) readerEntry.current = { key: activeDoc.key, point: afterDiscard(fromEditor(editorArea.current), draft.text, draft.base) };
+      });
+    } else if (readerRef.current) {
+      const point = readerRef.current.sourcePoint();
+      readerRef.current.flushPosition();
+      setFindKey(null);
+      editor.begin(activeDoc, point);
+    }
   };
   const findOpen = !!activeDoc && findKey === activeDoc.key;
   const closeFind = useCallback(() => {
@@ -200,6 +221,7 @@ export default function App() {
 
   const onPosition = useCallback(
     (key: string, pos: ReadingPosition) => {
+      if (readerEntry.current?.key === key) readerEntry.current = null;
       positionsRef.current[key] = pos;
       schedulePersist();
       if (pos.anchor) {
@@ -728,9 +750,9 @@ export default function App() {
         <section className="stage">
           {activeDoc && draft ? (
             <div className="source-editor" key={activeDoc.key}>
-              <textarea className="source-text" aria-label={activeDoc.kind === "markdown" ? "Markdown 源文" : "正文编辑"}
+              <textarea ref={attachEditor} className="source-text" aria-label={activeDoc.kind === "markdown" ? "Markdown 源文" : "正文编辑"}
                 style={{ fontSize: settings.fontSize, maxWidth: CONTENT_WIDTHS[settings.contentWidth] }}
-                spellCheck={false} autoFocus readOnly={draft.saving} value={draft.text} onChange={(event) => editor.change(activeDoc.key, event.target.value)} />
+                spellCheck={false} readOnly={draft.saving} value={draft.text} onChange={(event) => editor.change(activeDoc.key, event.target.value)} />
               {draft.error && <p className="editor-error" role="alert">{draft.error}</p>}
             </div>
           ) : activeDoc ? (
@@ -745,6 +767,7 @@ export default function App() {
               findOpen={findOpen}
               onCloseFind={closeFind}
               initialPosition={positionsRef.current[activeDoc.key]}
+              initialSource={readerEntry.current?.key === activeDoc.key ? readerEntry.current.point : undefined}
               onPosition={onPosition}
               onOutline={setOutline}
               onActiveHeading={setActiveHeading}

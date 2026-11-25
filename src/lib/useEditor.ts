@@ -2,10 +2,10 @@ import { useCallback, useRef, useState } from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { saveDocument } from "./api";
 import type { OpenDoc } from "./types";
+import { normalizeSource, type EditorView, type SourcePoint } from "./modePosition";
 
-interface Draft { base: string; revision: string; text: string; saving?: boolean; error?: string }
+interface Draft { base: string; revision: string; text: string; view: EditorView; saving?: boolean; error?: string }
 type Drafts = Record<string, Draft>;
-const normalized = (text: string) => text.replace(/\r\n?/g, "\n");
 export const isDirty = (draft: Draft) => draft.text !== draft.base;
 
 export function useEditor(onSaved: (key: string, file: Awaited<ReturnType<typeof saveDocument>>) => void) {
@@ -16,9 +16,9 @@ export function useEditor(onSaved: (key: string, file: Awaited<ReturnType<typeof
     if (next) all[key] = next; else delete all[key];
     setDrafts(current.current = all);
   }, []);
-  const begin = (doc: OpenDoc) => {
-    const text = normalized(doc.content);
-    update(doc.key, { base: text, revision: doc.revision, text });
+  const begin = (doc: OpenDoc, entry: SourcePoint) => {
+    const text = normalizeSource(doc.content);
+    update(doc.key, { base: text, revision: doc.revision, text, view: { entry } });
   };
   const change = (key: string, text: string) => {
     const draft = current.current[key];
@@ -31,14 +31,14 @@ export function useEditor(onSaved: (key: string, file: Awaited<ReturnType<typeof
     try {
       const saved = await saveDocument(doc.path, draft.revision, draft.text);
       onSaved(doc.key, saved);
-      const text = normalized(saved.content);
-      update(doc.key, { base: text, text, revision: saved.revision });
+      const text = normalizeSource(saved.content);
+      update(doc.key, { base: text, text, revision: saved.revision, view: draft.view });
     } catch (error) {
       update(doc.key, { ...draft, error: typeof error === "string" ? error : "保存失败，草稿已保留。" });
     }
   };
   const asking = useRef(false);
-  const leave = useCallback(async (key?: string) => {
+  const leave = useCallback(async (key?: string, beforeLeave?: () => void) => {
     const items = Object.entries(current.current).filter(([id]) => !key || key === id);
     if (asking.current || items.some(([, draft]) => draft.saving)) return false;
     if (items.some(([, draft]) => isDirty(draft))) {
@@ -49,6 +49,7 @@ export function useEditor(onSaved: (key: string, file: Awaited<ReturnType<typeof
         })) return false;
       } catch { return false; } finally { asking.current = false; }
     }
+    beforeLeave?.();
     for (const [id] of items) update(id);
     return true;
   }, [update]);

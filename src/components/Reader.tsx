@@ -7,9 +7,11 @@ import { dirname, extOf } from "../lib/paths";
 import { MarkdownView } from "../markdown/MarkdownView";
 import { DocumentSearch } from "./DocumentSearch";
 import { AnnotationTools } from "./AnnotationTools";
+import { fromReader, normalizeSource, toReader, type SourcePoint } from "../lib/modePosition";
 import { Lamp } from "./neu";
 
 export interface ReaderHandle {
+  sourcePoint: () => SourcePoint;
   focusFind: () => void;
   focusReading: () => void;
   scrollToId: (id: string) => boolean;
@@ -28,6 +30,7 @@ interface ReaderProps {
   findOpen: boolean;
   onCloseFind: () => void;
   initialPosition?: ReadingPosition;
+  initialSource?: SourcePoint;
   onPosition: (key: string, pos: ReadingPosition) => void;
   onOutline: (items: OutlineItem[]) => void;
   onActiveHeading: (id: string | null) => void;
@@ -58,6 +61,7 @@ export const Reader = memo(function Reader(props: ReaderProps) {
   const [progress, setProgress] = useState(0);
 
   const baseDir = useMemo(() => dirname(doc.path), [doc.path]);
+  const source = useMemo(() => normalizeSource(doc.content), [doc.content]);
   const chars = useMemo(() => doc.content.replace(/\s+/g, "").length, [doc.content]);
 
   /** 记录视口顶部所在的正文块及块内比例，字号 / 宽度 / 图片加载变化后据此还原 */
@@ -160,6 +164,7 @@ export const Reader = memo(function Reader(props: ReaderProps) {
   useImperativeHandle(
     ref,
     () => ({
+      sourcePoint: () => fromReader(scrollRef.current!, contentRef.current!, source),
       focusFind: () => { findInput.current?.focus(); findInput.current?.select(); },
       focusReading: () => scrollRef.current?.focus({ preventScroll: true }),
       scrollToId: (id: string) => {
@@ -187,7 +192,7 @@ export const Reader = memo(function Reader(props: ReaderProps) {
         report();
       },
     }),
-    [capture, report, unpin],
+    [capture, report, unpin, source],
   );
 
   // 大纲
@@ -212,7 +217,10 @@ export const Reader = memo(function Reader(props: ReaderProps) {
   // 首次挂载：还原阅读位置
   useLayoutEffect(() => {
     const s = scrollRef.current;
-    if (s && initialPosition) {
+    if (s && contentRef.current && props.initialSource && toReader(s, contentRef.current, source, props.initialSource)) {
+      anchorRef.current = capture();
+      pinnedRef.current = true;
+    } else if (s && initialPosition) {
       if (!applyAnchor(anchorRef.current)) {
         const max = s.scrollHeight - s.clientHeight;
         s.scrollTop = initialPosition.ratio * max;
@@ -307,11 +315,11 @@ export const Reader = memo(function Reader(props: ReaderProps) {
         >
           {doc.kind === "markdown" ? (
             <div className="md" ref={contentRef}>
-              <MarkdownView content={doc.content} renderHtml={renderHtml} baseDir={baseDir} onLink={props.onLink} />
+              <MarkdownView content={doc.content} trackSource renderHtml={renderHtml} baseDir={baseDir} onLink={props.onLink} />
             </div>
           ) : (
             <div ref={contentRef}>
-              <pre className={`plain-text ${PROSE_TEXT.includes(ext) ? "" : "mono"}`}>{doc.content}</pre>
+              <pre className={`plain-text ${PROSE_TEXT.includes(ext) ? "" : "mono"}`} data-source-pos={`0:${source.length}`}>{doc.content}</pre>
             </div>
           )}
         </div>

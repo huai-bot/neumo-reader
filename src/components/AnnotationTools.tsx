@@ -101,7 +101,7 @@ export function AnnotationTools({ docKey, content, renderHtml, contentRef, scrol
       return caret && root.contains(caret.startContainer) ? caret : null;
     };
     const down = (event: PointerEvent) => {
-      if (event.button !== 0 || !(event.target instanceof Element) || panel.current?.contains(event.target)) return;
+      if (event.button !== 0 || !(event.target instanceof Element) || panel.current?.contains(event.target) || event.target.closest("[data-edit-toggle]")) return;
       cancelClick = false;
       if (!root.contains(event.target) || event.target.closest("button,input,textarea,select")) { clear(); return; }
       const from = { x: event.clientX, y: event.clientY };
