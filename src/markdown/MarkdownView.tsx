@@ -133,8 +133,9 @@ export const MarkdownView = memo(function MarkdownView({ content, renderHtml, ba
         }
         return <blockquote data-source-pos={sourcePos(node)}>{children}</blockquote>;
       },
-      a: ({ href, children, title, node }) => (
+      a: ({ href, children, title, node, ...linkProps }) => (
         <a
+          {...linkProps}
           data-source-pos={sourcePos(node)}
           href={href}
           title={title ?? href}

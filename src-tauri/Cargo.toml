@@ -1,6 +1,6 @@
 [package]
 name = "neumo-reader"
-version = "0.4.1"
+version = "0.4.2"
 description = "拟物阅读 - a soft UI Markdown & text reader"
 authors = ["MA SU"]
 license = "MIT"
