@@ -30,7 +30,7 @@ import { PEEK, PEEK_LABEL } from "./peek/protocol";
 import type { PeekAnchor, PeekDoc, PeekStyle } from "./peek/protocol";
 import type { TextFile } from "./lib/api";
 import { basename, dirname, extOf, pathKey, resolvePath } from "./lib/paths";
-import { docKind, extLabel, MARKDOWN_EXT, TEXT_EXT } from "./lib/fileTypes";
+import { docKind, MARKDOWN_EXT, TEXT_EXT } from "./lib/fileTypes";
 import type { OpenDoc, OutlineItem } from "./lib/types";
 import type { PersistedState, ReadingPosition, Settings } from "./lib/state";
 import { clampFont, DEFAULT_SETTINGS, MAX_RECENT, parseState, prunePositions } from "./lib/state";
@@ -78,6 +78,7 @@ export default function App() {
   const [recent, setRecent] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [findKey, setFindKey] = useState<string | null>(null);
   const [outline, setOutline] = useState<OutlineItem[]>([]);
   const [activeHeading, setActiveHeading] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -91,6 +92,16 @@ export default function App() {
   live.current = { settings, docs, activeKey, recent, settingsOpen };
 
   const activeDoc = docs.find((d) => d.key === activeKey) ?? null;
+  const findOpen = !!activeDoc && findKey === activeDoc.key;
+  const closeFind = useCallback(() => {
+    setFindKey(null);
+    readerRef.current?.focusReading();
+  }, []);
+  const openFind = () => {
+    if (!activeDoc || settingsOpen) return;
+    if (findOpen) readerRef.current?.focusFind();
+    else setFindKey(activeDoc.key);
+  };
 
   /* ---------------- 持久化 ---------------- */
 
@@ -150,7 +161,7 @@ export default function App() {
 
   /* 热键：注册 / 暂停按顺序执行，避免录制结束与应用新热键交错 */
   const [hotkeyErrors, setHotkeyErrors] = useState<Record<string, string>>({});
-  const overlayReady = useRef(false);
+  const hotkeysReady = useRef(false);
   const hotkeyQueue = useRef<Promise<unknown>>(Promise.resolve());
   const enqueueHotkeys = useCallback((task: () => Promise<{ errors: Record<string, string> } | void>) => {
     hotkeyQueue.current = hotkeyQueue.current
@@ -162,7 +173,7 @@ export default function App() {
   }, []);
   const onHotkeyRecording = useCallback(
     (recording: boolean) => {
-      if (!overlayReady.current) return;
+      if (!hotkeysReady.current) return;
       if (recording) enqueueHotkeys(async () => void (await overlaySuspendHotkeys(true)));
       else {
         enqueueHotkeys(async () => void (await overlaySuspendHotkeys(false)));
@@ -209,7 +220,7 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    if (overlayReady.current) enqueueHotkeys(() => overlaySetHotkeys(effectiveHotkeys(settings)));
+    if (hotkeysReady.current) enqueueHotkeys(() => overlaySetHotkeys(effectiveHotkeys(settings)));
   }, [settings.hotkeys, settings.hotkeyEnabled, enqueueHotkeys]);
 
   useEffect(() => {
@@ -382,6 +393,7 @@ export default function App() {
   useEffect(() => {
     if (ready && activeKey && settings.autoReload) void checkDoc(activeKey);
     setActiveHeading(null);
+    setFindKey(null);
     const ph = pendingHash.current;
     if (ph && ph.key === activeKey) {
       pendingHash.current = null;
@@ -433,17 +445,14 @@ export default function App() {
       setReady(true);
 
       // 主窗口就绪后再创建悬浮层
+      hotkeysReady.current = true;
       enqueueHotkeys(async () => {
-        try {
-          const r = await overlayInit(effectiveHotkeys(st.settings));
-          overlayReady.current = true;
-          const n = Object.keys(r.errors).length;
-          if (n) pushToast(`有 ${n} 个悬浮层热键无法使用，请在设置中查看`, "warn");
-          return r;
-        } catch (e) {
-          pushToast(`悬浮层创建失败：${errText(e)}`, "warn");
-        }
+        const report = await overlaySetHotkeys(effectiveHotkeys(live.current.settings));
+        const count = Object.keys(report.errors).length;
+        if (count) pushToast(`有 ${count} 个热键无法使用，请在设置中查看`, "warn");
+        return report;
       });
+      void overlayInit().catch((error) => pushToast(`悬浮层创建失败：${errText(error)}`, "warn"));
     })();
     return () => {
       cancelled = true;
@@ -597,8 +606,19 @@ export default function App() {
 
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => {});
   keyHandler.current = (e: KeyboardEvent) => {
+    if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
     if (e.key === "Escape" && live.current.settingsOpen) {
       setSettingsOpen(false);
+      return;
+    }
+    if (e.key === "Escape" && findOpen) {
+      e.preventDefault();
+      closeFind();
+      return;
+    }
+    if (e.key === "F3" && !e.altKey && !e.ctrlKey && !e.metaKey && (!findOpen || settingsOpen)) {
+      e.preventDefault();
+      openFind();
       return;
     }
     if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
@@ -606,6 +626,7 @@ export default function App() {
     const ak = live.current.activeKey;
     let handled = true;
     if (k === "o") void pickFiles();
+    else if (k === "f" && !e.shiftKey) openFind();
     else if (k === "b") toggleSidebar();
     else if (k === "=" || k === "+") fontStep(1);
     else if (k === "-" || k === "_") fontStep(-1);
@@ -642,6 +663,9 @@ export default function App() {
         sidebarOpen={!settings.sidebarCollapsed}
         onToggleSidebar={toggleSidebar}
         onOpen={() => void pickFiles()}
+        canFind={!!activeDoc}
+        findOpen={findOpen}
+        onFind={findOpen ? closeFind : openFind}
         title={activeDoc ? activeDoc.name : "拟物阅读"}
         subtitle={activeDoc ? dirname(activeDoc.path) : ""}
         fontSize={settings.fontSize}
@@ -680,6 +704,8 @@ export default function App() {
               contentWidth={settings.contentWidth}
               renderHtml={settings.renderHtml}
               autoReload={settings.autoReload}
+              findOpen={findOpen}
+              onCloseFind={closeFind}
               initialPosition={positionsRef.current[activeDoc.key]}
               onPosition={onPosition}
               onOutline={setOutline}
@@ -693,15 +719,11 @@ export default function App() {
                 <NeuButton shape="round" size="lg" onClick={() => void pickFiles()} aria-label="打开文件">
                   <IconOpen size={30} />
                 </NeuButton>
-                <h1>打开一个文件开始阅读</h1>
-                <p>
-                  支持 Markdown 与纯文本，也可以直接把文件拖进窗口。<span className="num">Ctrl O</span>
-                </p>
+                <h1>打开或拖入文件</h1>
                 {recentForEmpty.length > 0 && (
                   <div className="empty-recent">
                     {recentForEmpty.map((r) => (
                       <button key={r} type="button" className="chip" onClick={() => void openPaths([r])} title={r}>
-                        <span className="num">{extLabel(r)}</span>
                         {basename(r)}
                       </button>
                     ))}

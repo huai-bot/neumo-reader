@@ -458,12 +458,15 @@ fn quit_app(app: AppHandle) {
 pub fn run() {
     let cwd = std::env::current_dir().unwrap_or_default();
     let startup = extract_file_arg(std::env::args(), &cwd);
+    let background = startup.is_none() && std::env::args().skip(1).any(|arg| arg == "--background");
     let (portable_dir, portable_failed) = detect_portable();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
-            if let Some(file) = extract_file_arg(args, Path::new(&cwd)) {
+            if let Some(file) = extract_file_arg(&args, Path::new(&cwd)) {
                 let _ = app.emit("open-file", file);
+            } else if args.iter().any(|arg| arg == "--background") {
+                return;
             }
             focus_main(app);
         }))
@@ -504,7 +507,7 @@ pub fn run() {
                 .find(|w| w.label == "main")
                 .cloned()
                 .ok_or("tauri.conf.json 缺少 main 窗口配置")?;
-            let mut builder = WebviewWindowBuilder::from_config(app.handle(), &config)?.visible(false);
+            let mut builder = WebviewWindowBuilder::from_config(app.handle(), &config)?.visible(false).focused(!background);
             if let Some(dir) = &portable_dir {
                 // 便携模式下 WebView2 的缓存也放在软件目录
                 builder = builder.data_directory(dir.join("webview"));
@@ -530,10 +533,13 @@ pub fn run() {
             if saved.is_some_and(|b| b.maximized) {
                 let _ = window.maximize();
             }
-            window.show()?;
-            let _ = window.set_focus();
-            if let Err(e) = tray::create(app.handle()) {
-                eprintln!("创建托盘图标失败：{e}");
+            let tray = tray::create(app.handle());
+            if !background || tray.is_err() {
+                window.show()?;
+                let _ = window.set_focus();
+            }
+            if let Err(error) = tray {
+                eprintln!("创建托盘图标失败：{error}");
             }
             Ok(())
         })

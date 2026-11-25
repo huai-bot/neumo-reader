@@ -1,7 +1,6 @@
 import type { OpenDoc, OutlineItem } from "../lib/types";
 import type { SidebarTab } from "../lib/state";
 import { basename, dirname, pathKey } from "../lib/paths";
-import { extLabel } from "../lib/fileTypes";
 import { Lamp, NeuButton, Segmented } from "./neu";
 import { IconClose, IconOpen } from "./Icons";
 
@@ -51,17 +50,15 @@ export function Sidebar(p: SidebarProps) {
             </NeuButton>
 
             <div className="sb-scroll">
-              <div className="sb-section">
+              {p.docs.length > 0 && <div className="sb-section">
                 <div className="sb-title">
                   <span>已打开</span>
                   <span className="num sb-count">{p.docs.length}</span>
                 </div>
-                {p.docs.length === 0 && <p className="sb-empty">还没有打开的文件</p>}
                 {p.docs.map((d) => (
                   <div key={d.key} className={`sb-item ${d.key === p.activeKey ? "is-current" : ""}`}>
                     <button type="button" className="sb-item-main" onClick={() => p.onSelect(d.key)} title={d.path}>
                       <Lamp state={d.missing ? "warn" : d.key === p.activeKey ? "on" : "off"} />
-                      <span className="sb-ext num">{extLabel(d.path)}</span>
                       <span className="sb-text">
                         <span className="sb-name">{d.name}</span>
                         <span className="sb-dir">{dirname(d.path)}</span>
@@ -72,7 +69,7 @@ export function Sidebar(p: SidebarProps) {
                     </button>
                   </div>
                 ))}
-              </div>
+              </div>}
 
               {recent.length > 0 && (
                 <div className="sb-section">
@@ -85,7 +82,6 @@ export function Sidebar(p: SidebarProps) {
                   {recent.map((r) => (
                     <div key={r} className="sb-item">
                       <button type="button" className="sb-item-main" onClick={() => p.onOpenRecent(r)} title={r}>
-                        <span className="sb-ext num">{extLabel(r)}</span>
                         <span className="sb-text">
                           <span className="sb-name">{basename(r)}</span>
                           <span className="sb-dir">{dirname(r)}</span>
@@ -102,7 +98,6 @@ export function Sidebar(p: SidebarProps) {
           </>
         ) : (
           <div className="sb-scroll">
-            {activeDoc && <div className="sb-title sb-title-doc">{activeDoc.name}</div>}
             {p.outline.length === 0 ? (
               <p className="sb-empty">{activeDoc ? (activeDoc.kind === "markdown" ? "此文档没有标题" : "纯文本文件没有大纲") : "打开文件后显示大纲"}</p>
             ) : (

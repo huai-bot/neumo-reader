@@ -549,15 +549,6 @@ kbd {
   letter-spacing: 0.06em;
   color: var(--text-2);
 }
-.sb-title-doc {
-  letter-spacing: 0;
-  color: var(--text);
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: block;
-}
 .sb-count {
   color: var(--accent);
 }
@@ -611,17 +602,6 @@ kbd {
   text-align: left;
   cursor: pointer;
   border-radius: var(--r-btn);
-}
-.sb-ext {
-  width: 30px;
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-2);
-  text-align: center;
-}
-.sb-item.is-current .sb-ext {
-  color: var(--accent);
 }
 .sb-text {
   min-width: 0;
@@ -771,6 +751,62 @@ kbd {
   transition: max-width var(--t-slow) var(--spring-soft);
 }
 
+.find-bar {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: min(384px, 100%);
+  margin: 3px 0 10px;
+  padding: 4px;
+}
+.find-entry {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  margin-right: 4px;
+  padding: 0 12px;
+  border-radius: var(--r-btn);
+  box-shadow: var(--inset-sm);
+}
+.find-entry:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.find-entry input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  caret-color: var(--accent);
+  font: inherit;
+}
+.find-entry input::placeholder { color: var(--text-2); }
+.find-count { flex: none; color: var(--text-2); font-size: 12px; white-space: nowrap; }
+.find-btn {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.find-btn:hover:not(:disabled) { box-shadow: var(--raised-sm); color: var(--accent); }
+.find-btn:active:not(:disabled) { box-shadow: var(--inset-sm); }
+.find-btn:disabled { opacity: .4; cursor: default; }
+::highlight(find-matches) { background-color: #d6d7ee; color: var(--text); }
+::highlight(find-current) { background-color: var(--accent); color: white; }
+
 .statusbar {
   flex-shrink: 0;
   height: 48px;
@@ -833,18 +869,9 @@ kbd {
   animation: pop-in var(--t-slow) var(--spring);
 }
 .empty h1 {
-  margin: 30px 0 8px;
+  margin: 30px 0 0;
   font-size: 21px;
   font-weight: 600;
-}
-.empty p {
-  margin: 0;
-  color: var(--text-2);
-  line-height: 1.7;
-}
-.empty p .num {
-  margin-left: 8px;
-  font-size: 12px;
 }
 .empty-recent {
   margin-top: 26px;
@@ -873,11 +900,6 @@ kbd {
     box-shadow var(--t-mid) ease,
     transform var(--t-slow) var(--spring),
     color var(--t-fast) ease;
-}
-.chip .num {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-2);
 }
 .chip:hover {
   box-shadow: var(--raised);
@@ -1080,11 +1102,6 @@ kbd {
   align-items: center;
   gap: 14px;
 }
-.hk-enable {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
 .hk-field {
   min-width: 168px;
   height: 36px;
@@ -1130,12 +1147,7 @@ kbd {
       0 0 0 4px var(--accent-ring);
   }
 }
-.set-note {
-  margin: 0 0 4px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-2);
-}
+.set-reset { justify-content: flex-end; }
 .set-inline .set-desc {
   margin-left: 10px;
 }

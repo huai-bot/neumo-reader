@@ -40,6 +40,15 @@ export const IconSettings = (p: P) => (
     <path d="M12 3.2v2.2M12 18.6v2.2M3.2 12h2.2M18.6 12h2.2M5.8 5.8l1.5 1.5M16.7 16.7l1.5 1.5M5.8 18.2l1.5-1.5M16.7 7.3l1.5-1.5" />
   </Svg>
 );
+export const IconSearch = (props: P) => (
+  <Svg {...props}>
+    <circle cx="10.5" cy="10.5" r="6.5" />
+    <path d="m15.5 15.5 4.5 4.5" />
+  </Svg>
+);
+export const IconChevron = ({ up = false }: { up?: boolean }) => (
+  <Svg size={16}><path d={up ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} /></Svg>
+);
 export const IconMinus = (p: P) => (
   <Svg {...p}>
     <path d="M6 12h12" />

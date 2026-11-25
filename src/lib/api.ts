@@ -48,7 +48,7 @@ export interface HotkeyReport {
   errors: Record<string, string>;
 }
 
-export const overlayInit = (hotkeys: Record<string, string>) => invoke<HotkeyReport>("overlay_init", { hotkeys });
+export const overlayInit = () => invoke<void>("overlay_init");
 export const overlaySetHotkeys = (hotkeys: Record<string, string>) =>
   invoke<HotkeyReport>("overlay_set_hotkeys", { hotkeys });
 export const overlaySuspendHotkeys = (suspend: boolean) => invoke<HotkeyReport>("overlay_suspend_hotkeys", { suspend });

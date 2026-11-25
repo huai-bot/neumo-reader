@@ -6,6 +6,7 @@ import {
   IconMinus,
   IconOpen,
   IconPlus,
+  IconSearch,
   IconSettings,
   IconSidebar,
   IconWinMax,
@@ -18,6 +19,9 @@ interface TitleBarProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onOpen: () => void;
+  canFind: boolean;
+  findOpen: boolean;
+  onFind: () => void;
   title: string;
   subtitle: string;
   fontSize: number;
@@ -62,6 +66,9 @@ export function TitleBar(p: TitleBarProps) {
       </div>
 
       <div className="tb-group">
+        <NeuButton disabled={!p.canFind} on={p.findOpen} onClick={p.onFind} title="文档内查找 (Ctrl+F)" aria-label="文档内查找" aria-expanded={p.findOpen}>
+          <IconSearch />
+        </NeuButton>
         <div className="font-ctl" role="group" aria-label="字号">
           <NeuButton size="sm" onClick={() => p.onFontStep(-1)} disabled={p.fontSize <= FONT_MIN} title="缩小 (Ctrl+-)" aria-label="缩小字号">
             <IconMinus size={18} />

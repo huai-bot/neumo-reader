@@ -5,9 +5,12 @@ import type { Anchor, ContentWidth, ReadingPosition } from "../lib/state";
 import { CONTENT_WIDTHS } from "../lib/state";
 import { dirname, extOf } from "../lib/paths";
 import { MarkdownView } from "../markdown/MarkdownView";
+import { DocumentSearch } from "./DocumentSearch";
 import { Lamp } from "./neu";
 
 export interface ReaderHandle {
+  focusFind: () => void;
+  focusReading: () => void;
   scrollToId: (id: string) => boolean;
   flushPosition: () => void;
   /** 跳到指定阅读位置（悬浮层里翻到的地方） */
@@ -21,6 +24,8 @@ interface ReaderProps {
   contentWidth: ContentWidth;
   renderHtml: boolean;
   autoReload: boolean;
+  findOpen: boolean;
+  onCloseFind: () => void;
   initialPosition?: ReadingPosition;
   onPosition: (key: string, pos: ReadingPosition) => void;
   onOutline: (items: OutlineItem[]) => void;
@@ -41,6 +46,7 @@ export const Reader = memo(function Reader(props: ReaderProps) {
   const { doc, fontSize, contentWidth, renderHtml, autoReload, initialPosition, ref } = props;
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const findInput = useRef<HTMLInputElement>(null);
   const anchorRef = useRef<Anchor | null>(initialPosition?.anchor ?? null);
   const pinnedRef = useRef(Boolean(initialPosition));
   const headingsRef = useRef<HTMLElement[]>([]);
@@ -127,9 +133,33 @@ export const Reader = memo(function Reader(props: ReaderProps) {
     pinnedRef.current = false;
   }, []);
 
+  const revealMatch = useCallback((range: Range) => {
+    const scroll = scrollRef.current;
+    const element = range.startContainer.parentElement;
+    if (!scroll || !element) return;
+    unpin();
+    for (let details = element.closest("details"); details; details = details.parentElement?.closest("details") ?? null) {
+      if (!details.open) details.open = true;
+    }
+    const horizontal = element.closest<HTMLElement>(".md-code pre,.md-table-wrap,.katex-display");
+    const rect = range.getBoundingClientRect();
+    if (horizontal && horizontal.scrollWidth > horizontal.clientWidth) {
+      const box = horizontal.getBoundingClientRect();
+      if (rect.left < box.left || rect.right > box.right) horizontal.scrollLeft += rect.left - box.left - 16;
+    }
+    const viewport = scroll.getBoundingClientRect();
+    if (rect.top < viewport.top + 8 || rect.bottom > viewport.bottom - 8) {
+      scroll.scrollTop += rect.top - viewport.top - (viewport.height - Math.min(rect.height, viewport.height)) / 2;
+    }
+    anchorRef.current = capture();
+    report();
+  }, [capture, report, unpin]);
+
   useImperativeHandle(
     ref,
     () => ({
+      focusFind: () => { findInput.current?.focus(); findInput.current?.select(); },
+      focusReading: () => scrollRef.current?.focus({ preventScroll: true }),
       scrollToId: (id: string) => {
         const s = scrollRef.current;
         const c = contentRef.current;
@@ -266,6 +296,8 @@ export const Reader = memo(function Reader(props: ReaderProps) {
 
   return (
     <div className="reader">
+      {props.findOpen && <DocumentSearch inputRef={findInput} contentRef={contentRef} content={doc.content}
+        renderHtml={renderHtml} onReveal={revealMatch} onClose={props.onCloseFind} />}
       <div className="reader-scroll" ref={scrollRef} tabIndex={-1}>
         <div
           className="reader-content"

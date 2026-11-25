@@ -33,6 +33,7 @@ const RADIUS: f64 = 8.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Action {
+    ShowMain,
     Peek,
     Adjust,
     ScrollUp,
@@ -45,7 +46,7 @@ enum Action {
 }
 
 /// (动作, 配置里的名字, 中文名, 默认热键)
-const ACTIONS: [(Action, &str, &str, &str); 9] = [
+const ACTIONS: [(Action, &str, &str, &str); 10] = [
     (Action::Peek, "peek", "偷看 / 固定", "Alt+Backquote"),
     (Action::Adjust, "adjust", "调整模式", "Alt+Shift+Backquote"),
     (Action::ScrollUp, "scrollUp", "向上滚动", "Alt+ArrowUp"),
@@ -55,6 +56,7 @@ const ACTIONS: [(Action, &str, &str, &str); 9] = [
     (Action::PrevSection, "prevSection", "上一节 / 上一步", "Alt+BracketLeft"),
     (Action::NextSection, "nextSection", "下一节 / 下一步", "Alt+BracketRight"),
     (Action::ToggleView, "toggleView", "切换全文 / 卡片", "Alt+Backslash"),
+    (Action::ShowMain, "showMain", "显示主窗口", "Ctrl+Alt+KeyR"),
 ];
 
 impl Action {
@@ -68,7 +70,7 @@ impl Action {
             Action::PrevSection => Some(("heading", -1)),
             Action::NextSection => Some(("heading", 1)),
             Action::ToggleView => Some(("view", 0)),
-            Action::Peek | Action::Adjust => None,
+            Action::Peek | Action::Adjust | Action::ShowMain => None,
         }
     }
     fn label(self) -> &'static str {
@@ -170,7 +172,7 @@ fn window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
 
 /* ---------------- 创建 ---------------- */
 
-pub fn create<R: Runtime>(app: &AppHandle<R>, data_dir: &Path, webview_dir: Option<PathBuf>) -> tauri::Result<()> {
+pub fn create<R: Runtime>(app: &AppHandle<R>, data_dir: &Path, webview_dir: Option<PathBuf>, main_focused: bool) -> tauri::Result<()> {
     let saved: Option<Bounds> = fs::read(data_dir.join(BOUNDS_FILE))
         .ok()
         .and_then(|b| serde_json::from_slice::<Bounds>(&b).ok())
@@ -186,7 +188,7 @@ pub fn create<R: Runtime>(app: &AppHandle<R>, data_dir: &Path, webview_dir: Opti
         .resizable(true)
         .focused(false)
         .focusable(false)
-        .visible(true)
+        .visible(main_focused)
         .disable_drag_drop_handler()
         .min_inner_size(260.0, 220.0);
     if let Some(dir) = webview_dir {
@@ -370,6 +372,11 @@ pub(crate) fn handle_binding<R: Runtime>(app: &AppHandle<R>, binding: Binding, p
         return;
     }
     match action {
+        Some(Action::ShowMain) => {
+            if pressed {
+                crate::tray::show_main(app);
+            }
+        }
         Some(Action::Peek) => on_peek(app, pressed),
         Some(Action::Adjust) => {
             if pressed {
@@ -614,7 +621,7 @@ pub fn on_main_destroyed<R: Runtime>(app: &AppHandle<R>) {
 /// 不在 setup 里创建：两个 WebView2 同时用同一个数据目录初始化会报“资源在使用中”。
 /// 必须是 async 命令：同步命令跑在主线程上，在里面创建窗口会死锁。
 #[tauri::command]
-pub async fn overlay_init(app: AppHandle, hotkeys: HashMap<String, String>) -> Result<HotkeyReport, String> {
+pub async fn overlay_init(app: AppHandle) -> Result<(), String> {
     if window(&app).is_none() {
         let (data_dir, webview_dir) = {
             let paths = app.state::<AppPaths>();
@@ -622,13 +629,14 @@ pub async fn overlay_init(app: AppHandle, hotkeys: HashMap<String, String>) -> R
             let wv = paths.portable.then(|| dir.join("webview"));
             (dir, wv)
         };
-        create(&app, &data_dir, webview_dir).map_err(|e| e.to_string())?;
+        let main = app.get_webview_window("main").filter(|win| win.is_visible().unwrap_or(false) && win.is_focused().unwrap_or(false));
+        create(&app, &data_dir, webview_dir, main.is_some()).map_err(|e| e.to_string())?;
         // 创建过程中系统可能短暂激活了悬浮层，把焦点还给主窗口
-        if let Some(main) = app.get_webview_window("main") {
+        if let Some(main) = main {
             let _ = main.set_focus();
         }
     }
-    Ok(apply_hotkeys(&app, &hotkeys))
+    Ok(())
 }
 
 #[tauri::command]

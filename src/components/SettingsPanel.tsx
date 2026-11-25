@@ -10,7 +10,8 @@ import type { AppInfo } from "../lib/api";
 import { DEFAULT_SETTINGS, FONT_MAX, FONT_MIN } from "../lib/state";
 import { Knob, Lamp, NeuButton, Segmented, Toggle } from "./neu";
 import { HotkeyField } from "./HotkeyField";
-import { DEFAULT_HOTKEYS, DEFAULT_HOTKEY_ENABLED, effectiveHotkeys, formatHotkey, HOTKEY_ACTIONS, sameHotkeys } from "../lib/hotkeys";
+import { DEFAULT_HOTKEYS, MAIN_HOTKEY, OVERLAY_ACTIONS } from "../lib/hotkeys";
+import type { HotkeyMeta } from "../lib/hotkeys";
 import { IconClose } from "./Icons";
 
 function Row({ title, desc, children }: { title: string; desc?: string; children: ReactNode }) {
@@ -40,7 +41,15 @@ export function SettingsPanel({
 }) {
   const [version, setVersion] = useState("");
   const [info, setInfo] = useState<AppInfo | null>(null);
-  const activeHotkeys = effectiveHotkeys(settings);
+  const hotkeyField = (meta: HotkeyMeta) => (
+    <HotkeyField meta={meta} value={settings.hotkeys[meta.id]} enabled={settings.hotkeyEnabled[meta.id]}
+      error={hotkeyErrors[meta.id]} onRecording={onHotkeyRecording}
+      onEnabledChange={(enabled) => onChange({ hotkeyEnabled: { ...settings.hotkeyEnabled, [meta.id]: enabled } })}
+      onChange={(value) => onChange({
+        hotkeys: { ...settings.hotkeys, [meta.id]: value },
+        hotkeyEnabled: { ...settings.hotkeyEnabled, [meta.id]: value !== "" },
+      })} />
+  );
   useEffect(() => {
     void getVersion().then(setVersion).catch(() => setVersion(""));
     void appInfo().then(setInfo).catch(() => setInfo(null));
@@ -57,10 +66,8 @@ export function SettingsPanel({
         </header>
 
         <h3 className="set-group">常规</h3>
-        <Row
-          title="点击关闭按钮时"
-          desc="收到托盘后程序在后台运行，悬浮层热键仍然可用；点击托盘图标重新打开，右键托盘图标可以退出。选「询问」会在下次关闭时询问并记住选择。"
-        >
+        <Row title="显示主窗口" desc="全局热键">{hotkeyField(MAIN_HOTKEY)}</Row>
+        <Row title="关闭窗口时">
           <Segmented<CloseAction>
             label="点击关闭按钮时"
             value={settings.closeAction}
@@ -74,10 +81,10 @@ export function SettingsPanel({
         </Row>
 
         <h3 className="set-group">阅读恢复</h3>
-        <Row title="启动时恢复上次阅读" desc="未通过双击文件或命令行打开新文件时，重新打开上次退出时的文件，并回到当时的阅读位置。">
+        <Row title="启动时恢复上次阅读">
           <Toggle label="启动时恢复上次阅读" checked={settings.restoreLastSession} onChange={(v) => onChange({ restoreLastSession: v })} />
         </Row>
-        <Row title="记住每个文件的阅读位置" desc="以后再次打开同一文件时，自动跳到上次读到的地方。">
+        <Row title="记住每个文件的阅读位置">
           <Toggle label="记住每个文件的阅读位置" checked={settings.rememberPositions} onChange={(v) => onChange({ rememberPositions: v })} />
         </Row>
 
@@ -85,9 +92,6 @@ export function SettingsPanel({
         <div className="set-row set-row-knob">
           <div className="set-label">
             <span className="set-title">正文字号</span>
-            <span className="set-desc">
-              拖动或滚动旋钮调整，范围 <span className="num">{FONT_MIN}</span>–<span className="num">{FONT_MAX}</span> px。阅读时也可用 Ctrl + 滚轮。
-            </span>
             <div className="set-inline">
               <NeuButton size="sm" shape="wide" onClick={() => onChange({ fontSize: DEFAULT_SETTINGS.fontSize })}>
                 恢复默认 <span className="num">{DEFAULT_SETTINGS.fontSize}</span>
@@ -109,18 +113,14 @@ export function SettingsPanel({
             ]}
           />
         </Row>
-        <Row title="渲染 Markdown 中的 HTML" desc="经过安全过滤后渲染内嵌 HTML 标签。">
+        <Row title="渲染 Markdown 中的 HTML">
           <Toggle label="渲染 HTML" checked={settings.renderHtml} onChange={(v) => onChange({ renderHtml: v })} />
         </Row>
 
-        <h3 className="set-group">悬浮层 · 游戏中看攻略</h3>
+        <h3 className="set-group">悬浮层</h3>
         <div className="set-row">
           <div className="set-label">
-            <span className="set-title">悬浮层</span>
-            <span className="set-desc">
-              置顶显示、不抢焦点、鼠标可穿透，适合无边框 / 窗口化全屏的游戏。
-              {activeHotkeys.peek ? <>按住 <kbd>{formatHotkey(activeHotkeys.peek)}</kbd> 偷看，轻按固定。</> : "偷看快捷键已关闭，可用右侧按钮或托盘控制显示。"}
-            </span>
+            <span className="set-title">预览</span>
           </div>
           <div className="set-ctl">
             <NeuButton size="sm" shape="wide" onClick={() => void overlayToggle()}>
@@ -131,13 +131,9 @@ export function SettingsPanel({
         <div className="set-row set-row-knob">
           <div className="set-label">
             <span className="set-title">背景不透明度</span>
-            <span className="set-desc">
-              只影响背景，文字始终不透明；低于 <span className="num">100%</span> 时文字会加一圈光晕。拖动或滚动旋钮调整，
-              <span className="num">0%</span> 时只剩文字。
-            </span>
             <div className="set-inline">
               <Toggle label="背景模糊" checked={settings.overlayBlur} onChange={(v) => onChange({ overlayBlur: v })} />
-              <span className="set-desc">背景模糊：把后面的画面糊掉，半透明时更易读</span>
+              <span className="set-desc">背景模糊</span>
             </div>
           </div>
           <Knob
@@ -165,10 +161,7 @@ export function SettingsPanel({
           />
         </Row>
 
-        <Row
-          title="显示方式"
-          desc={`步骤卡片：一次只显示一节或一步，适合边玩边看；全文：和主窗口一样连续滚动。${activeHotkeys.toggleView ? `悬浮层显示时也可以按 ${formatHotkey(activeHotkeys.toggleView)} 切换。` : "切换快捷键已关闭，可在这里选择显示方式。"}`}
-        >
+        <Row title="显示方式">
           <Segmented<PeekView>
             label="显示方式"
             value={settings.overlayView}
@@ -179,7 +172,7 @@ export function SettingsPanel({
             ]}
           />
         </Row>
-        <Row title="卡片拆分" desc="按步骤：有序列表和任务列表的每一项单独成卡，列表前的说明放在第一步；按章节：每个标题一张卡。">
+        <Row title="卡片拆分">
           <Segmented<CardSplit>
             label="卡片拆分"
             value={settings.overlayCardSplit}
@@ -192,7 +185,7 @@ export function SettingsPanel({
         </Row>
         <Row
           title="看完自动翻到下一步"
-          desc="按住偷看超过 1 秒、其间没有手动翻页，松开后下次偷看直接显示下一步。固定显示时不会自动翻页。"
+          desc="按住偷看超过 1 秒且未手动翻页，下次从下一步开始。"
         >
           <Toggle
             label="看完自动翻到下一步"
@@ -202,43 +195,31 @@ export function SettingsPanel({
         </Row>
 
         <h3 className="set-group">悬浮层热键</h3>
-        <p className="set-note">
-          点击热键后按下新的组合键；<kbd>Esc</kbd> 取消，<kbd>Backspace</kbd> 清除。菜单键可以单独使用，也可以按住再按方向键组成组合键；小键盘不受数字锁定影响。关闭右侧开关即可停用，原组合键会保留。滚动、翻页、换节热键只在悬浮层显示时生效。
-        </p>
-        {HOTKEY_ACTIONS.map((meta) => (
+        {OVERLAY_ACTIONS.map((meta) => (
           <Row key={meta.id} title={meta.label} desc={meta.desc}>
-            <HotkeyField
-              meta={meta}
-              value={settings.hotkeys[meta.id]}
-              enabled={settings.hotkeyEnabled[meta.id]}
-              error={hotkeyErrors[meta.id]}
-              onRecording={onHotkeyRecording}
-              onEnabledChange={(v) => onChange({ hotkeyEnabled: { ...settings.hotkeyEnabled, [meta.id]: v } })}
-              onChange={(v) => onChange({
-                hotkeys: { ...settings.hotkeys, [meta.id]: v },
-                hotkeyEnabled: { ...settings.hotkeyEnabled, [meta.id]: v !== "" },
-              })}
-            />
+            {hotkeyField(meta)}
           </Row>
         ))}
-        <div className="set-row">
-          <div className="set-label">
-            <span className="set-desc">把全部悬浮层热键恢复为默认值。</span>
-          </div>
+        <div className="set-row set-reset">
           <div className="set-ctl">
             <NeuButton
               size="sm"
               shape="wide"
-              disabled={sameHotkeys(settings.hotkeys, DEFAULT_HOTKEYS) && HOTKEY_ACTIONS.every((a) => settings.hotkeyEnabled[a.id])}
-              onClick={() => onChange({ hotkeys: { ...DEFAULT_HOTKEYS }, hotkeyEnabled: { ...DEFAULT_HOTKEY_ENABLED } })}
+              disabled={OVERLAY_ACTIONS.every(({ id }) => settings.hotkeyEnabled[id] && settings.hotkeys[id] === DEFAULT_HOTKEYS[id])}
+              onClick={() => {
+                const hotkeys = { ...settings.hotkeys };
+                const hotkeyEnabled = { ...settings.hotkeyEnabled };
+                for (const { id } of OVERLAY_ACTIONS) { hotkeys[id] = DEFAULT_HOTKEYS[id]; hotkeyEnabled[id] = true; }
+                onChange({ hotkeys, hotkeyEnabled });
+              }}
             >
-              恢复默认热键
+              恢复悬浮层默认热键
             </NeuButton>
           </div>
         </div>
 
         <h3 className="set-group">文件</h3>
-        <Row title="文件变化时自动刷新" desc="其他程序修改了正在阅读的文件时自动重新载入，并保持阅读位置。">
+        <Row title="文件变化时自动刷新">
           <Toggle label="自动刷新" checked={settings.autoReload} onChange={(v) => onChange({ autoReload: v })} />
         </Row>
 
@@ -249,13 +230,7 @@ export function SettingsPanel({
               <Lamp state={info?.portableFailed ? "warn" : info?.portable ? "on" : "off"} />
               {info?.portable ? "便携模式" : "安装模式"}
             </span>
-            <span className="set-desc">
-              {info?.portable
-                ? "设置、最近文件、阅读位置和窗口状态都保存在软件目录的 data 文件夹，可以连同软件一起拷走。"
-                : info?.portableFailed
-                  ? "软件目录有 portable.flag，但该目录不可写，数据暂存到用户目录。请把软件放到可写的位置。"
-                  : "数据保存在用户目录。在软件所在文件夹放一个 portable.flag 文件，重启后即切换为便携模式。"}
-            </span>
+            {info?.portableFailed && <span className="set-desc">软件目录不可写，数据已保存到用户目录。</span>}
             {info && (
               <span className="set-path num" title={info.dataDir}>
                 {info.dataDir}

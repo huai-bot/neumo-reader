@@ -1,5 +1,6 @@
-/** 悬浮层热键，如 "Alt+Shift+Backquote" 或 "Menu+ArrowDown"；空字符串表示不使用 */
+/** 快捷键，如 "Alt+Shift+Backquote" 或 "Menu+ArrowDown"；空字符串表示不使用 */
 export type HotkeyAction =
+  | "showMain"
   | "peek"
   | "adjust"
   | "scrollUp"
@@ -21,7 +22,9 @@ export interface HotkeyMeta {
   global: boolean;
 }
 
-export const HOTKEY_ACTIONS: HotkeyMeta[] = [
+export const MAIN_HOTKEY: HotkeyMeta = { id: "showMain", label: "显示主窗口", global: true };
+
+export const OVERLAY_ACTIONS: HotkeyMeta[] = [
   { id: "peek", label: "偷看 / 固定", desc: "按住显示、松开隐藏；轻按固定 / 取消固定", global: true },
   { id: "adjust", label: "调整模式", desc: "可以用鼠标拖动位置、拖右下角缩放", global: true },
   { id: "scrollUp", label: "向上滚动", desc: "按住连续滚动", global: false },
@@ -32,8 +35,10 @@ export const HOTKEY_ACTIONS: HotkeyMeta[] = [
   { id: "nextSection", label: "下一节 / 下一步", global: false },
   { id: "toggleView", label: "切换全文 / 卡片", global: false },
 ];
+export const HOTKEY_ACTIONS = [...OVERLAY_ACTIONS, MAIN_HOTKEY];
 
 export const DEFAULT_HOTKEYS: Hotkeys = {
+  showMain: "Ctrl+Alt+KeyR",
   peek: "Alt+Backquote",
   adjust: "Alt+Shift+Backquote",
   scrollUp: "Alt+ArrowUp",
@@ -208,5 +213,3 @@ export function parseHotkeyEnabled(v: unknown): HotkeyEnabled {
 export function effectiveHotkeys(settings: { hotkeys: Hotkeys; hotkeyEnabled: HotkeyEnabled }): Hotkeys {
   return Object.fromEntries(HOTKEY_ACTIONS.map((a) => [a.id, settings.hotkeyEnabled[a.id] ? settings.hotkeys[a.id] : ""])) as Hotkeys;
 }
-
-export const sameHotkeys = (a: Hotkeys, b: Hotkeys) => HOTKEY_ACTIONS.every((x) => a[x.id] === b[x.id]);

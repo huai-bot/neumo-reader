@@ -92,6 +92,7 @@ export function HotkeyField({
           type="button"
           className={`hk-field num ${recording ? "is-recording" : ""} ${enabled && value ? "" : "is-empty"} ${msg ? "is-error" : ""}`}
           aria-label={`${meta.label}：${formatHotkey(value)}${enabled ? "" : "，已关闭"}，点击修改`}
+          title="点击后按新组合键；Esc 取消，Backspace 清除"
           onClick={() => {
             setLocal("");
             setRecording((r) => !r);
@@ -99,10 +100,7 @@ export function HotkeyField({
         >
           {recording ? preview || "请按下组合键…" : formatHotkey(value)}
         </button>
-        <div className="hk-enable">
-          <Toggle label={`启用${meta.label}快捷键`} checked={enabled} onChange={onEnabledChange} />
-          <span className="set-desc">{enabled ? "开启" : "关闭"}</span>
-        </div>
+        <Toggle label={`启用${meta.label}快捷键`} checked={enabled} onChange={onEnabledChange} />
       </div>
       {msg && !recording && <span className="hk-error" role="alert">{msg}</span>}
     </div>
